@@ -22,6 +22,7 @@ Deployed: 2026-09-05. Passwords and keys are in `CREDENTIALS.md` (not in git).
 | TLS | Virtualmin-managed certificate (`ssl.combined`) |
 | Unix user | `serial-reminder` (no sudo) |
 | Cron | hourly episode check + nightly backup, in `serial-reminder`'s crontab |
+| Telegram | new episodes are announced through `sms.kimiasoft.com` — see section 14 |
 
 > `php8.4-sqlite3` was not installed on ger1 before this project. Installing it
 > restarted the shared `php8.4-fpm` service, a sub-second interruption for every
@@ -63,13 +64,13 @@ Only `public_html` is web-reachable.
 | `users` | one row — username, password hash, API key |
 | `sessions`, `login_tickets` | dashboard logins; tickets are single use, 60 seconds |
 | `serials` | one row per followed show. `confirmed = 0` means "opened but never really watched" — hidden, and swept after `candidate_days` (90). |
-| `episodes` | every episode, whether from a watch report (`source = watch`) or the hourly check (`source = catalog`) |
+| `episodes` | every episode, whether from a watch report (`source = watch`) or the hourly check (`source = catalog`). `notified_at` is when the Telegram message about it went out — NULL means not yet, and it is what stops the same episode being announced twice. |
 | `provider_accounts` | which mobile number each site is logged in with |
 | `schema_migrations` | which `.sql` files have run |
 
 **Migrations run once each, in filename order**, tracked in `schema_migrations`.
 They do not have to be idempotent — `002` and later use plain `ALTER TABLE`.
-Add a new one as `005_*.sql`; `bin/sr.php migrate` picks it up.
+Add a new one as `006_*.sql`; `bin/sr.php migrate` picks it up.
 
 ## 3. Connecting
 
@@ -271,6 +272,7 @@ sudo -u serial-reminder php8.4 $D/app/bin/sr.php <command>
 | `providers` | list provider scripts, check they parse |
 | `check [--serial=N] [--force] [--quiet]` | look for new episodes |
 | `serials [username]` | what the server thinks you are watching |
+| `notify:test ["message"]` | send one Telegram message, to prove `notify.url` works |
 
 ## 10. Backup and restore
 
@@ -307,6 +309,8 @@ Never copy a live WAL database with `cp` — use `.backup`, which is consistent.
 | Checker says "request failed or returned no JSON" | The site changed its API, or it is blocking the server. Test the URL by hand from ger1 with `curl`. |
 | Checker says "needs the 'iran' relay, which config.php does not define" | `relays` is missing from `config.php`. Section 13. |
 | Namava alone finds nothing, no error | The relay is down or its key changed, or namava's own API moved. Section 13 has the two commands that tell those apart. |
+| No Telegram message for an episode that is clearly new | Was it the show's **first** check? Those are silent on purpose. Otherwise run `sr.php check --serial=N --force` and read the line it prints; `NOTIFY FAILED` gives the reason. `SELECT number, notified_at FROM episodes WHERE serial_id = N` shows what was already announced. |
+| The same episode was announced twice | Should be impossible — `notified_at` is stamped only after a message really went out. If it happens, two checks ran at the same moment; look for a second cron entry with `crontab -u serial-reminder -l`. |
 | Every show suddenly shows new episodes | A provider's `skipWhen` no longer filters "coming soon" entries. |
 | Extension reaches the server but never posts a watch | The tracker is not in that tab. Check `grep "POST /api/watch" logs/access_log`. Reload the extension; reload the page if it persists. |
 | An episode you watched is still "unseen", play time `00:00` | The server was never told. Nothing was posted for it — check `grep "POST /api/watch" logs/access_log` around that evening. The usual cause is the extension not running on the computer you watched on. |
@@ -412,3 +416,55 @@ ssh waybill 'mv /tmp/sr-relay-index.php /var/www/sr-relay/index.php
 To rotate the key, write a new one to `/etc/serial-reminder-relay.key` on
 waybill **and** to `relays.iran.headers` in ger1's `config.php`. Between those
 two edits the hourly check reports a namava error; nothing else is affected.
+
+## 14. Telegram, when an episode is published
+
+The hourly check sends a message about every newly published episode, once.
+
+```
+cron ──► catalog of each show ──► new episode? ──► GET sms.kimiasoft.com/sendMsg
+                                                    ?p=<account>&c=t&r=monitoring&m=<text>
+```
+
+`config.php` on ger1 holds the address, because it carries the gateway account
+id. `{msg}` is replaced with the url-encoded message. The gateway has no
+newline, so `line_break` is what it wants instead — `_C` here.
+
+```php
+'notify' => [
+    'url'          => 'https://sms.kimiasoft.com/sendMsg?p=<id>&c=t&r=monitoring&m={msg}',
+    'line_break'   => '_C',
+    'max_episodes' => 6,
+],
+```
+
+An empty `url` switches the whole thing off, silently and on purpose.
+
+### The "only once" rule
+
+`episodes.notified_at` is the record. It is stamped **only after the gateway
+answered 2xx**, so a failed send is retried on the next hourly run, and a
+message that really went out is never repeated.
+
+Two kinds of episode are deliberately never announced, and are stamped without
+sending:
+
+- anything found on a show's **first ever check** (`last_checked_at IS NULL`).
+  That run imports the entire back catalogue.
+- episodes already marked watched — which is how the back catalogue of a show
+  you joined at episode 20 is stored.
+
+Migration `005_notify.sql` stamps every episode that existed when it ran, for
+the same reason.
+
+### Testing it
+
+```bash
+D=/mnt/ger_hd1/www/serial-reminder
+sudo -u serial-reminder php8.4 $D/app/bin/sr.php notify:test
+sudo -u serial-reminder php8.4 $D/app/bin/sr.php notify:test "one line_Cnext line"
+```
+
+A successful gateway reply starts with `telegramResult=<id>`. The tool only
+looks at the HTTP status: a 2xx counts as sent, because retrying every hour
+against a gateway that already delivered would be worse than one lost message.

@@ -25,7 +25,7 @@ final class Checker
             $sql .= " AND (last_checked_at IS NULL OR last_checked_at < datetime('now', '-$minAgeMinutes minutes'))";
         }
 
-        $stats = ['checked' => 0, 'added' => 0, 'errors' => 0, 'pruned' => 0, 'details' => []];
+        $stats = ['checked' => 0, 'added' => 0, 'errors' => 0, 'pruned' => 0, 'notified' => 0, 'details' => []];
 
         if ($onlySerialId === null) {
             $stats['pruned'] = self::pruneCandidates();
@@ -35,17 +35,22 @@ final class Checker
             $result = self::checkOne($serial, $providers);
             $stats['checked']++;
             $stats['added'] += $result['added'];
+            $stats['notified'] += $result['notified'] ?? 0;
             if ($result['error'] !== null) {
                 $stats['errors']++;
             }
             $stats['details'][] = $result;
             if ($verbose) {
+                $note = $result['notifyError'] !== null
+                    ? ' NOTIFY FAILED: ' . $result['notifyError']
+                    : (($result['notified'] ?? 0) > 0 ? ' told you about ' . $result['notified'] : '');
                 fwrite(STDOUT, sprintf(
-                    "[%s] %-40s added=%d %s\n",
+                    "[%s] %-40s added=%d %s%s\n",
                     $serial['provider'],
                     mb_strimwidth((string) $serial['title'], 0, 40, '…'),
                     $result['added'],
-                    $result['error'] !== null ? 'ERROR: ' . $result['error'] : 'ok'
+                    $result['error'] !== null ? 'ERROR: ' . $result['error'] : 'ok',
+                    $note
                 ));
             }
         }
@@ -106,7 +111,13 @@ final class Checker
         }
 
         $added = Serials::mergeCatalog($serialId, $res['episodes']);
-        return self::finishCheck($serialId, $serial, $added, $res['error']);
+
+        // Announce what the site just published. This has to happen before
+        // finishCheck stamps last_checked_at: "never checked before" is what
+        // tells a new episode apart from a back catalogue being imported.
+        $notified = Notify::afterCheck($serial, $serial['last_checked_at'] === null);
+
+        return self::finishCheck($serialId, $serial, $added, $res['error'], $notified);
     }
 
     /**
@@ -131,8 +142,14 @@ final class Checker
         return (string) $serial['provider_key'];
     }
 
-    private static function finishCheck(int $serialId, array $serial, int $added, ?string $error): array
-    {
+    /** @param array{sent:int,silenced:int,error:?string}|null $notified */
+    private static function finishCheck(
+        int $serialId,
+        array $serial,
+        int $added,
+        ?string $error,
+        ?array $notified = null
+    ): array {
         Db::q(
             "UPDATE serials SET last_checked_at = datetime('now'), check_error = ? WHERE id = ?",
             [$error, $serialId]
@@ -142,6 +159,8 @@ final class Checker
             'title'    => (string) $serial['title'],
             'added'    => $added,
             'error'    => $error,
+            'notified' => $notified['sent'] ?? 0,
+            'notifyError' => $notified['error'] ?? null,
         ];
     }
 }

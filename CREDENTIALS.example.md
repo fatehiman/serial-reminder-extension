@@ -39,6 +39,17 @@ runs in Iran. See DEPLOYMENT.md section 13.
 | `X-Relay-Key` | the same string as `/etc/serial-reminder-relay.key` on the relay box |
 | Relay host / SSH | |
 
+## Telegram notifier
+
+The URL the hourly check calls when a show gets a new episode. It carries the
+account id of the messaging gateway, so it lives in `config.php`, never in git.
+See DEPLOYMENT.md section 14.
+
+| | |
+|---|---|
+| Notify URL | `https://your-gateway/sendMsg?p=<account id>&c=t&r=<channel>&m={msg}` |
+| Line break | `_C` |
+
 ## Server
 
 | | |

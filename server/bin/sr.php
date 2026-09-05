@@ -11,6 +11,7 @@ declare(strict_types=1);
  *   php bin/sr.php user:password <username> <pw>
  *   php bin/sr.php providers
  *   php bin/sr.php check [--serial=<id>] [--force] [--quiet]
+ *   php bin/sr.php notify:test ["message"]        send one Telegram message
  *   php bin/sr.php serials [<username>]
  */
 
@@ -23,6 +24,7 @@ require dirname(__DIR__) . '/bootstrap.php';
 use SR\Auth;
 use SR\Checker;
 use SR\Db;
+use SR\Notify;
 use SR\Providers;
 use SR\Serials;
 
@@ -105,10 +107,21 @@ switch ($command) {
         $verbose  = !isset($flags['quiet']);
         $t0    = microtime(true);
         $stats = Checker::runAll($serialId, $minAge, $verbose);
-        out(sprintf('checked=%d added=%d errors=%d pruned=%d in %.1fs',
-            $stats['checked'], $stats['added'], $stats['errors'],
+        out(sprintf('checked=%d added=%d notified=%d errors=%d pruned=%d in %.1fs',
+            $stats['checked'], $stats['added'], $stats['notified'] ?? 0, $stats['errors'],
             $stats['pruned'] ?? 0, microtime(true) - $t0));
         exit($stats['errors'] > 0 ? 1 : 0);
+
+    // Send one message through the notifier, to prove config.php is right.
+    case 'notify:test':
+        if (!Notify::enabled()) {
+            exitWith("notify.url is empty in config.php, so nothing is ever sent.");
+        }
+        $text = $args[0] ?? "🎬 Serial Reminder\nThis is a test message.\n"
+                          . rtrim((string) SR\Config::get('app_url', ''), '/') . '/dashboard';
+        $err  = Notify::send($text);
+        out($err === null ? 'sent' : 'FAILED: ' . $err);
+        exit($err === null ? 0 : 1);
 
     case 'serials':
         $username = $args[0] ?? null;

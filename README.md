@@ -50,6 +50,11 @@ All of these numbers live in `config.php`.
   lists with a countdown, before they are published, are **not** counted — each
   provider file filters them, and the server drops anything with a release date
   in the future as a second guard.
+- **Messages you when an episode is published.** The hourly check sends one
+  Telegram message per show, listing the episodes it just found. An episode is
+  never mentioned twice, and a show's first check stays quiet — that run imports
+  the whole back catalogue, which is not news. Set `notify.url` in `config.php`;
+  leave it empty and nothing is ever sent.
 - **Says how many episodes you have not seen**, not how many are new. The badge
   on the poster reads `3 unseen` when three published episodes are waiting,
   whether they appeared today or a year ago.

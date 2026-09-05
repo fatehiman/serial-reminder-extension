@@ -44,6 +44,22 @@ return [
         // ],
     ],
 
+    // Tell me on Telegram when a show gets a new episode.
+    //
+    // The hourly check sends one message per show, listing what it just found,
+    // and never names the same episode twice — see src/Notify.php. It stays
+    // quiet on a show's first check, because that run imports the whole back
+    // catalogue. Leave 'url' empty to switch the whole thing off.
+    'notify' => [
+        // GET this URL. {msg} is replaced with the message, url-encoded.
+        // e.g. 'https://sms.example.com/sendMsg?p=12345&c=t&r=monitoring&m={msg}'
+        'url'          => '',
+        // The service has no newline. This is what it wants instead.
+        'line_break'   => '_C',
+        // Never list more than this many episodes in one message.
+        'max_episodes' => 6,
+    ],
+
     // An episode counts as watched when any of these matches. Reaching this also
     // makes the show join your list — a page you only sampled never shows up.
     'watched_rules' => [
