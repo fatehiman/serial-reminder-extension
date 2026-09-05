@@ -1,0 +1,129 @@
+{
+  "name": "namava",
+  "label": "Namava",
+  "version": 1,
+  "enabled": true,
+  "homepage": "https://www.namava.ir/",
+
+  "_comment": [
+    "Namava is a React SPA. Its whole API sits under https://www.namava.ir/api",
+    "and needs no login for anything used here:",
+    "",
+    "  /api/v2.0/medias/episodes/{mediaId}          one episode + its series",
+    "  /api/v2.0/medias/{seriesId}/single-series    the series, with its seasons",
+    "  /api/v2.0/medias/seasons/{seasonId}/episodes the episodes of one season",
+    "  /api/v2.0/users/info                         the logged-in user (cookie)",
+    "",
+    "GEO-BLOCK. Unlike the other three sites, namava answers only Iranian IPs.",
+    "From a German IP it still returns HTTP 200 and succeeded:true, but with an",
+    "empty result — so a failure looks exactly like 'this show has no episodes'.",
+    "That is why the catalog says \"fetchVia\": \"iran\": the hourly check on ger1",
+    "asks the relay on waybill (an Iranian VPS) to make the request for it. The",
+    "relay's address and key live in config.php, never in this file, because the",
+    "extension downloads this file. See DEPLOYMENT.md section 13.",
+    "The browser half needs no relay — you are already watching from Iran.",
+    "",
+    "EPISODE NUMBERS. Two different captions, and they are not the same shape:",
+    "  season list  -> episodeCaption \"قسمت ۷\"        (just the episode)",
+    "  episode page -> episodeCaption \"فصل ۴ قسمت ۷\"  (season AND episode)",
+    "So the catalog can use plain \"as\": \"int\", but the browser half has to pick",
+    "the two numbers apart with \"extract\". Do not use the API's own \"orderId\"",
+    "instead: in a sample of 25 random series it disagreed with the caption once",
+    "(orderId 10 where the site shows episode 9), which is the same trap sheyda",
+    "set. The label word is not always \"قسمت\" either — soundtrack series count in",
+    "\"قطعه\" — so the episode regex takes the number at the end of the caption.",
+    "",
+    "mediaDuration is in MINUTES here (54), not seconds, hence \"as\": \"minutes\".",
+    "publishDate is basic ISO 8601 (\"20260419T181800013Z\"), which plain PHP",
+    "strtotime() cannot read; Val::time() unpacks it.",
+    "",
+    "There is no reliable way to build the series page URL: the route is",
+    "/series/{id}-{slug} and no API response carries that slug. episodeUrl is the",
+    "player URL, which is what the dashboard actually links to, so seriesUrl is",
+    "left out rather than guessed."
+  ],
+
+  "matches": ["*://www.namava.ir/*", "*://namava.ir/*"],
+
+  "watch": {
+    "urlPattern": "^https?://(?:www\\.)?namava\\.ir/play\\?(?:[^#]*&)?m=([0-9]+)",
+    "urlFields": ["mediaKey"],
+
+    "video": { "selector": "video" },
+
+    "enrich": {
+      "url": "https://www.namava.ir/api/v2.0/medias/episodes/{mediaKey}",
+      "cacheSeconds": 21600,
+      "requireTruthy": "result.seriesId",
+      "fields": {
+        "seriesKey":    { "path": "result.seriesId", "as": "string" },
+        "seriesTitle":  "result.seriesCaption",
+        "poster":       "result.coverPortrait",
+        "season":       { "path": "result.episodeCaption", "extract": "فصل\\s*([0-9۰-۹]+)", "as": "int", "default": 1 },
+        "episode":      { "path": "result.episodeCaption", "extract": "([0-9۰-۹]+)\\s*$", "as": "int" },
+        "episodeTitle": "result.episodeCaption",
+        "episodeUrl":   "https://www.namava.ir/play?m={result.id}",
+        "duration":     { "path": "result.mediaDuration", "as": "minutes" }
+      }
+    },
+
+    "_noFallback": "Every namava page keeps the title 'Namava' until React replaces it, and the SPA changes the URL before the title. A title regex here would be a lie; if the API above changes, this provider needs fixing."
+  },
+
+  "account": {
+    "refreshHours": 20,
+    "source": "url",
+    "url": "https://www.namava.ir/api/v2.0/users/info",
+    "fields": {
+      "label": { "path": "result.registrationPhone", "as": "phone" },
+      "name":  "result.email",
+      "note":  "result.subscription.subscriptionName"
+    }
+  },
+
+  "catalog": {
+    "refKeyFrom": "seriesKey",
+    "fetchVia": "iran",
+    "maxRequests": 14,
+    "headers": { "Accept": "application/json", "Referer": "https://www.namava.ir/" },
+
+    "steps": [
+      {
+        "id": "seasons",
+        "url": "https://www.namava.ir/api/v2.0/medias/{refKey}/single-series",
+        "type": "json",
+        "list": "result.seasons",
+        "fields": {
+          "seasonId": { "path": "seasonId", "as": "string" },
+          "season":   { "path": "seasonOrderId", "as": "int", "default": 1 }
+        },
+        "skipWhen": [
+          { "path": "seasonId", "empty": true },
+          { "path": "publishInFuture", "truthy": true },
+          { "path": "seasonPublishDate", "future": true }
+        ]
+      },
+      {
+        "id": "episodes",
+        "forEach": "seasons",
+        "url": "https://www.namava.ir/api/v2.0/medias/seasons/{item.seasonId}/episodes",
+        "type": "json",
+        "list": "result",
+        "emit": true,
+        "fields": {
+          "number":     { "path": "episodeCaption", "as": "int" },
+          "season":     { "path": "seasonCaption", "as": "int", "default": 1 },
+          "title":      "caption",
+          "url":        "https://www.namava.ir/play?m={id}",
+          "duration":   { "path": "mediaDuration", "as": "minutes" },
+          "releasedAt": "publishDate"
+        },
+        "skipWhen": [
+          { "path": "id", "empty": true },
+          { "path": "publishInFuture", "truthy": true },
+          { "path": "publishDate", "future": true }
+        ]
+      }
+    ]
+  }
+}

@@ -32,6 +32,18 @@ return [
         'insecure_ssl' => false,
     ],
 
+    // Some sites answer only from their own country. A provider whose catalog
+    // says "fetchVia": "iran" is fetched through the relay named here instead of
+    // straight from this server. {url} is replaced with the encoded target URL.
+    // The key lives here and never in the provider file, which the extension
+    // downloads. Leave the list empty when you do not need one.
+    'relays' => [
+        // 'iran' => [
+        //     'url'     => 'https://sr-relay.example.ir/?u={url}',
+        //     'headers' => ['X-Relay-Key' => 'the long random key on the relay'],
+        // ],
+    ],
+
     // An episode counts as watched when any of these matches. Reaching this also
     // makes the show join your list — a page you only sampled never shows up.
     'watched_rules' => [

@@ -76,7 +76,7 @@ These files are **data, not code** — URL patterns, JSON paths, CSS selectors a
 regular expressions. The extension never runs downloaded JavaScript, so a
 provider file cannot do anything else to your browser.
 
-See [`docs/PROVIDERS.md`](docs/PROVIDERS.md) for the format. Two real ones ship
+See [`docs/PROVIDERS.md`](docs/PROVIDERS.md) for the format. Four real ones ship
 with it:
 
 | File | Site | How it reads the show |
@@ -84,10 +84,19 @@ with it:
 | [`filimo.json`](server/providers/filimo.json) | filimo.com | its public REST catalog API |
 | [`sheyda.json`](server/providers/sheyda.json) | sheyda.com | its GraphQL API |
 | [`filmnet.json`](server/providers/filmnet.json) | filmnet.ir | its public `/api-v2/` REST API |
+| [`namava.json`](server/providers/namava.json) | namava.ir | its public `/api/v2.0/` REST API |
 
-Neither needs a login **on the server**: the hourly check only uses the parts of
-each site's API that are public. Your own browser session is used only in the
-browser.
+None of them needs a login **on the server**: the hourly check only uses the
+parts of each site's API that are public. Your own browser session is used only
+in the browser.
+
+Namava adds one twist: it answers only Iranian IP addresses, and from anywhere
+else it returns an empty list instead of an error — which would look exactly
+like "this show has no new episodes". Its catalog therefore goes through a small
+relay that runs in Iran; the relay is one PHP file, only forwards GET requests
+to namava's API, and its address and key live in `config.php`, never in the
+provider file the browser downloads. See
+[DEPLOYMENT.md §13](DEPLOYMENT.md#13-the-iran-relay).
 
 ## Repository layout
 
@@ -97,6 +106,7 @@ server/
   src/               the PHP classes
   views/             login, dashboard, settings
   providers/         one JSON file per movie site
+  relay/             the country relay (PHP + vhost), deployed on its own box
   migrations/        SQLite schema
   bin/sr.php         command line tool (users, checks, migrations)
   config.example.php copy to config.php on the server

@@ -41,6 +41,10 @@ namespace SR;
  * GraphQL API is asked. Placeholders inside the body are filled in as well.
  *
  * Only steps with "emit": true contribute episodes to the result.
+ *
+ * A catalog may set "fetchVia": "<relay name>" when the site answers only from
+ * one country. The relay itself (its URL and key) lives in config.php, so the
+ * provider file — which the extension downloads — never carries a secret.
  */
 final class Catalog
 {
@@ -58,6 +62,14 @@ final class Catalog
 
         $headers  = (array) ($catalog['headers'] ?? []);
         $maxReq   = (int) ($catalog['maxRequests'] ?? 12);
+        $relay    = self::relay($catalog['fetchVia'] ?? null);
+        if ($relay === false) {
+            return [
+                'episodes' => [],
+                'error'    => "this catalog needs the '{$catalog['fetchVia']}' relay, which config.php does not define",
+                'requests' => 0,
+            ];
+        }
         $results  = [];   // step id => rows
         $episodes = [];
         $requests = 0;
@@ -101,6 +113,14 @@ final class Catalog
                 $requests++;
                 $stepHeaders = $headers + (array) ($step['headers'] ?? []);
                 $type = (string) ($step['type'] ?? 'json');
+
+                // A site that only answers from one country is asked through a
+                // relay in that country. The step URL is unchanged data; where
+                // the relay lives, and its key, are config.php's business.
+                if ($relay !== null) {
+                    $stepHeaders = (array) ($relay['headers'] ?? []) + $stepHeaders;
+                    $url = str_replace('{url}', rawurlencode($url), (string) $relay['url']);
+                }
 
                 if ($type === 'json') {
                     // A step can POST instead, which is how GraphQL APIs are asked.
@@ -173,6 +193,27 @@ final class Catalog
     }
 
     /**
+     * A named relay from config.php, or null when the catalog does not ask for
+     * one. Returns false when it asks for a relay that is not configured — that
+     * must be an error, not a silent direct request the site will reject.
+     *
+     *   'relays' => ['iran' => ['url' => 'https://host/?u={url}',
+     *                           'headers' => ['X-Relay-Key' => '...']]]
+     */
+    private static function relay(mixed $name): array|false|null
+    {
+        $name = is_string($name) ? trim($name) : '';
+        if ($name === '') {
+            return null;
+        }
+        $relay = Config::get('relays.' . $name);
+        if (!is_array($relay) || !is_string($relay['url'] ?? null) || $relay['url'] === '') {
+            return false;
+        }
+        return $relay;
+    }
+
+    /**
      * skipWhen: list of conditions. The row is dropped when ANY of them is true.
      *   {"path":"x","gt":0} {"path":"x","eq":"foo"} {"path":"x","empty":true}
      *   {"path":"x","truthy":true} {"path":"x","matches":"regex"}
@@ -212,8 +253,8 @@ final class Catalog
             }
             // Catches episodes a site lists before they air.
             if (array_key_exists('future', $cond) && is_string($v) && $v !== '') {
-                $ts = strtotime($v);
-                if ($ts !== false && ($ts > time()) === (bool) $cond['future']) {
+                $ts = Val::time($v);
+                if ($ts !== null && ($ts > time()) === (bool) $cond['future']) {
                     return true;
                 }
             }

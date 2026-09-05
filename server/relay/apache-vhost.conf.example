@@ -1,0 +1,42 @@
+# Serial Reminder — country relay.
+#
+# namava.ir answers only Iranian IPs. The app itself runs on ger1 (Germany), so
+# its hourly episode check asks this box to make those requests for it.
+# The relay only forwards GET requests to the hosts allow-listed in its own
+# index.php, and only with the right X-Relay-Key. See the repo's DEPLOYMENT.md.
+#
+# *.sitechee.ir already resolves here through Cloudflare and the wildcard
+# certificate already covers this name, so this vhost needed no DNS and no new
+# certificate.
+
+<VirtualHost *:80>
+    ServerName sr-relay.sitechee.ir
+    Redirect permanent / https://sr-relay.sitechee.ir/
+    ErrorLog  ${APACHE_LOG_DIR}/sr-relay-error.log
+    CustomLog ${APACHE_LOG_DIR}/sr-relay-access.log combined
+</VirtualHost>
+
+<IfModule mod_ssl.c>
+<VirtualHost *:443>
+    ServerName sr-relay.sitechee.ir
+
+    SSLEngine on
+    SSLCertificateFile    /etc/ssl/certs/sitechee.ir.crt
+    SSLCertificateKeyFile /etc/ssl/private/sitechee.ir.key
+
+    DocumentRoot /var/www/sr-relay
+
+    <Directory /var/www/sr-relay>
+        Options -Indexes -FollowSymLinks
+        AllowOverride None
+        Require all granted
+    </Directory>
+
+    <FilesMatch \.php$>
+        SetHandler "proxy:unix:/run/php/php8.4-fpm.sock|fcgi://localhost/"
+    </FilesMatch>
+
+    ErrorLog  ${APACHE_LOG_DIR}/sr-relay-error.log
+    CustomLog ${APACHE_LOG_DIR}/sr-relay-ssl-access.log combined
+</VirtualHost>
+</IfModule>

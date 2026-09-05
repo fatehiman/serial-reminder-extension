@@ -28,6 +28,17 @@ the dashboard by itself; keeping a copy here is just convenient.
 |---|---|---|
 | | | |
 
+## Country relay (only if a provider uses `fetchVia`)
+
+Namava answers only Iranian IPs, so its catalog is fetched through a relay that
+runs in Iran. See DEPLOYMENT.md section 13.
+
+| | |
+|---|---|
+| Relay URL | https://your-relay/?u={url} |
+| `X-Relay-Key` | the same string as `/etc/serial-reminder-relay.key` on the relay box |
+| Relay host / SSH | |
+
 ## Server
 
 | | |

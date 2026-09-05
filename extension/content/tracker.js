@@ -109,18 +109,23 @@
     return null;
   }
 
-  /** A field rule: a dot path, a "{...}" template, or {path, as, map, find, default}. */
+  /**
+   * A field rule: a dot path, a "{...}" template, or
+   * {path, as, map, find, extract, default}.
+   */
   function field(rule, vars) {
     let as = null;
     let map = null;
     let find = null;
     let pick = null;
+    let extract = null;
     let def;
     if (rule && typeof rule === 'object') {
       as = rule.as || null;
       map = rule.map || null;
       find = rule.find || null;
       pick = rule.pick || null;
+      extract = rule.extract || null;
       def = rule.default;
       rule = rule.path != null ? rule.path : rule.template;
     }
@@ -136,6 +141,17 @@
 
     if (value == null || value === '') return def;
 
+    // "extract": keep one group out of the text before anything else reads it.
+    // Namava names an episode "فصل ۴ قسمت ۷" — two numbers in one string, so
+    // "first integer found" would take the season for the episode number.
+    if (typeof extract === 'string' && extract && typeof value !== 'object') {
+      let m = null;
+      try { m = new RegExp(extract).exec(String(value)); }
+      catch (e) { log('bad extract pattern', extract, e.message); return def; }
+      if (!m) return def;
+      value = m[1] != null ? m[1] : m[0];
+    }
+
     if (map && (typeof value === 'string' || typeof value === 'number')) {
       const mapped = applyMap(value, map);
       if (mapped == null) return def;
@@ -147,6 +163,7 @@
     if (as === 'bool') return Boolean(value);
     if (as === 'string') return String(value);
     if (as === 'duration') return toDuration(value);
+    if (as === 'minutes') { const n = toInt(value); return n == null ? def : n * 60; }
     if (as === 'phone') return toPhone(value);
     return value;
   }

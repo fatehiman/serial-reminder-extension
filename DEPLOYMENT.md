@@ -17,7 +17,8 @@ Deployed: 2026-09-05. Passwords and keys are in `CREDENTIALS.md` (not in git).
 | PHP | 8.4.25, pool socket `/run/php/17886125251977616.sock` |
 | PHP modules added for this app | **`php8.4-sqlite3`** (installed 2026-09-05) |
 | Database | SQLite, one file, WAL mode |
-| Providers | filimo, sheyda, filmnet — JSON files in `app/providers/`, no login needed by the server |
+| Providers | filimo, sheyda, filmnet, namava — JSON files in `app/providers/`, no login needed by the server |
+| Relay | `sr-relay.sitechee.ir` on **waybill**, only for namava — see section 13 |
 | TLS | Virtualmin-managed certificate (`ssl.combined`) |
 | Unix user | `serial-reminder` (no sudo) |
 | Cron | hourly episode check + nightly backup, in `serial-reminder`'s crontab |
@@ -304,6 +305,8 @@ Never copy a live WAL database with `cp` — use `.backup`, which is consistent.
 | `attempt to write a readonly database` | The `data/` directory or the `.sqlite` file is not writable by `serial-reminder`. Files left owned by `root` after a deploy are the usual cause — `chown -R serial-reminder:serial-reminder`. |
 | Dashboard fine, extension says 401 | Wrong API key, or Apache stripped the `Authorization` header — the `.htaccess` rewrite that re-adds it must be present. |
 | Checker says "request failed or returned no JSON" | The site changed its API, or it is blocking the server. Test the URL by hand from ger1 with `curl`. |
+| Checker says "needs the 'iran' relay, which config.php does not define" | `relays` is missing from `config.php`. Section 13. |
+| Namava alone finds nothing, no error | The relay is down or its key changed, or namava's own API moved. Section 13 has the two commands that tell those apart. |
 | Every show suddenly shows new episodes | A provider's `skipWhen` no longer filters "coming soon" entries. |
 | Extension reaches the server but never posts a watch | The tracker is not in that tab. Check `grep "POST /api/watch" logs/access_log`. Reload the extension; reload the page if it persists. |
 | A show never appears on the dashboard | It needs 20 minutes of real playing, or a finished episode. Look for it with `SELECT * FROM serials WHERE confirmed = 0`. |
@@ -328,3 +331,82 @@ ssh Ger1-root 'crontab -u serial-reminder -r
 
 Take a copy of `data/serial-reminder.sqlite` first — it is the only thing that
 cannot be rebuilt from git.
+
+## 13. The Iran relay (namava only)
+
+Namava answers only Iranian IP addresses. It does not say so: from ger1 it
+returns **HTTP 200** and `succeeded: true` with an **empty** result, which the
+checker would read as "this show has no new episodes". So namava's catalog is
+fetched through a relay on **waybill** (`130.185.76.10`), which is in Iran.
+
+```
+ger1 cron ──HTTPS──► sr-relay.sitechee.ir ──HTTPS──► www.namava.ir/api/...
+  (Germany)          (waybill, Iran)                 (answers Iranian IPs)
+             X-Relay-Key: <key from config.php>
+```
+
+Everything else about namava — the tracker and the mobile number — runs in your
+own browser, which is already in Iran, and never touches the relay.
+
+### What is installed on waybill
+
+| | |
+|---|---|
+| Code | `/var/www/sr-relay/index.php` — the repo's `server/relay/index.php` |
+| Key | `/etc/serial-reminder-relay.key`, `chmod 400`, owned by `www-data` |
+| vhost | `/etc/apache2/sites-available/sr-relay.conf` — the repo's `server/relay/apache-vhost.conf.example`, PHP via the default `php8.4-fpm.sock` pool |
+| Name | `sr-relay.sitechee.ir` |
+
+`*.sitechee.ir` already resolves to waybill through Cloudflare and the existing
+`/etc/ssl/certs/sitechee.ir.crt` is a `*.sitechee.ir` wildcard, so this vhost
+needed **no DNS change and no new certificate**.
+
+The relay is deliberately dull: GET only, `https` only, and only to the hosts
+and path prefixes in the `ALLOW` constant at the top of `index.php`
+(`www.namava.ir` + `/api/`). It cannot be used as a general proxy, it follows no
+redirects, and it forwards no cookies.
+
+### The ger1 side
+
+`config.php` on ger1 carries the address and the key. This is why they are not
+in the provider file: `/api/providers` hands provider files to every browser.
+
+```php
+'relays' => [
+    'iran' => [
+        'url'     => 'https://sr-relay.sitechee.ir/?u={url}',
+        'headers' => ['X-Relay-Key' => '<the key>'],
+    ],
+],
+```
+
+A catalog that asks for a relay `config.php` does not define fails loudly
+instead of silently fetching direct and getting the empty answer.
+
+### Updating or checking it
+
+```bash
+# the relay refuses without the key, and refuses any host but namava
+curl -s -o /dev/null -w '%{http_code}\n' 'https://sr-relay.sitechee.ir/?u=x'   # -> 403
+
+KEY=<from CREDENTIALS.md>
+TARGET=https%3A%2F%2Fwww.namava.ir%2Fapi%2Fv2.0%2Fmedias%2F149441%2Fsingle-series
+curl -s -H "X-Relay-Key: $KEY" "https://sr-relay.sitechee.ir/?u=$TARGET" | head -c 120
+#   -> {"succeeded":true,"result":{...
+
+# ask namava directly from waybill, to tell "relay broken" from "namava changed"
+ssh waybill 'curl -s https://www.namava.ir/api/v2.0/medias/149441/single-series | head -c 120'
+```
+
+To deploy a new version of the relay:
+
+```bash
+scp server/relay/index.php waybill:/tmp/sr-relay-index.php
+ssh waybill 'mv /tmp/sr-relay-index.php /var/www/sr-relay/index.php
+  chown www-data:www-data /var/www/sr-relay/index.php
+  chmod 644 /var/www/sr-relay/index.php'
+```
+
+To rotate the key, write a new one to `/etc/serial-reminder-relay.key` on
+waybill **and** to `relays.iran.headers` in ger1's `config.php`. Between those
+two edits the hourly check reports a namava error; nothing else is affected.

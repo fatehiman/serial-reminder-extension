@@ -291,6 +291,40 @@ A step can `POST` as well, which is how a GraphQL catalog is read:
 Fields a step does not set are inherited from its `forEach` parent, so the
 `season` worked out in the seasons step is carried onto every episode.
 
+### `fetchVia` — a site that only answers its own country
+
+Namava returns **HTTP 200 with an empty result** to a request from outside Iran.
+That is worse than an error: the checker would happily record "no new episodes".
+
+A catalog can name a relay to be fetched through:
+
+```jsonc
+"catalog": {
+  "fetchVia": "iran",
+  "steps": [ ... ]
+}
+```
+
+The name is all the provider file carries. Where that relay lives, and the key
+it needs, are in `config.php`:
+
+```php
+'relays' => [
+    'iran' => [
+        'url'     => 'https://sr-relay.example.ir/?u={url}',
+        'headers' => ['X-Relay-Key' => '…'],
+    ],
+],
+```
+
+That split matters: the extension downloads provider files, so a secret in one
+would be a secret in every browser. A catalog that asks for a relay `config.php`
+does not define fails with a clear error instead of quietly fetching direct.
+
+The relay itself is `server/relay/index.php` — one file, GET only, https only,
+and only to the hosts and path prefixes allow-listed inside it. The **browser**
+half never uses it: you are already watching from the country in question.
+
 ### Variables available in a URL template
 
 `{refKey}` `{seriesKey}` `{seriesUrl}` `{title}` and `{item.<field>}` from the
@@ -360,10 +394,32 @@ A field is one of:
 | `{"path": "a.b", "as": "int"}` | read and convert |
 | `{"path": "a.b", "as": "int", "default": 1}` | …with a fallback value |
 | `{"path": "a.b", "map": {"one": 1}}` | …translating words into values first |
+| `{"path": "a.b", "extract": "قسمت ([0-9۰-۹]+)"}` | …keeping only what the regex captures |
 | `{"path": "list", "find": {"id": "{x}"}, "pick": "name"}` | find a row in a list, take one field |
 
-`as` also understands `duration` (`"01:05:39"` → 3939 seconds) and `phone`
-(`989133169571` → `09133169571`).
+`as` also understands `duration` (`"01:05:39"` → 3939 seconds), `minutes`
+(`54` → 3240 seconds, for catalogs that count episode length in minutes) and
+`phone` (`989133169571` → `09133169571`).
+
+### `extract` — two numbers in one string
+
+`as: "int"` takes the **first** number it finds. That is wrong the moment a site
+puts the season and the episode in the same caption: namava calls an episode
+`"فصل ۴ قسمت ۷"`, so plain `as: "int"` would report episode 4.
+
+`extract` runs a regular expression over the value first and keeps capture group
+1 (group 0 when there are no groups). Write the pattern **without** delimiters
+and without flags — both halves of the app compile it, PHP with `u` and the
+browser with none.
+
+```jsonc
+"season":  { "path": "result.episodeCaption", "extract": "فصل\\s*([0-9۰-۹]+)", "as": "int", "default": 1 },
+"episode": { "path": "result.episodeCaption", "extract": "([0-9۰-۹]+)\\s*$",   "as": "int" }
+```
+
+When the pattern does not match, the field falls back to its `default` — so give
+`season` one, and leave `episode` without, because an episode number that could
+not be read must stop the report rather than invent a number.
 
 `as` can be `int`, `float`, `bool` or `string`. Persian and Arabic digits
 (`۲۲`, `٢٢`) are converted to normal numbers automatically.
@@ -505,3 +561,9 @@ Worth reading before writing a fourth — every one of these was a real bug.
 | `credentials: "include"` on a cross-origin API | Sheyda's gateway answers **504**. `same-origin` still sends cookies to a site's own API. |
 | A player that is not there yet | Filmnet's video.js element appears about two seconds after load. The default `video` selector is right, it just needs patience. |
 | Durations as text | `"01:05:39"` needs `as: "duration"`, otherwise it reads as the number 1. |
+| Durations in minutes | Namava's `mediaDuration` is `54`, not `3240`. `as: "minutes"`. |
+| A geo-blocked API that answers 200 | Namava returns `succeeded: true` and an **empty** result to a foreign IP. Always run a new catalog from the server as well as from your desk before believing it. |
+| Season and episode in one caption | Namava's episode page says `"فصل ۴ قسمت ۷"`. `as: "int"` takes the first number — the season. Use `extract`. |
+| Two captions for the same thing | Namava's season list says `"قسمت ۷"` but its episode page says `"فصل ۴ قسمت ۷"`. Read both, do not assume. |
+| A tidy-looking `orderId` | Namava has one, and across 25 random series it disagreed with the caption once. The caption is what the viewer sees; trust that. |
+| Dates strtotime() cannot read | Namava's `"20260419T181800013Z"` is valid ISO 8601, but the basic form. `future` skips silently unless the date is normalised first. |

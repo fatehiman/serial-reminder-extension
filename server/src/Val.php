@@ -131,6 +131,31 @@ final class Val
     }
 
     /**
+     * Minutes to seconds. Some catalogs give a plain episode length in minutes
+     * (namava's "mediaDuration": 54), and everything here counts in seconds.
+     */
+    public static function minutes(mixed $v): ?int
+    {
+        $n = self::int($v);
+        return $n === null ? null : $n * 60;
+    }
+
+    /**
+     * A timestamp, as a Unix time. strtotime() understands most of what these
+     * sites send, but not the "basic" ISO 8601 form namava uses
+     * ("20260419T181800013Z"), so that one is unpacked by hand first.
+     */
+    public static function time(string $v): ?int
+    {
+        $v = trim($v);
+        if (preg_match('/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})\d{0,3}Z?$/', $v, $m)) {
+            $v = "$m[1]-$m[2]-$m[3]T$m[4]:$m[5]:$m[6]Z";
+        }
+        $ts = strtotime($v);
+        return $ts === false ? null : $ts;
+    }
+
+    /**
      * Show an Iranian mobile number the way people write it: 989133169571 and
      * +98 913 316 9571 both become 09133169571. Anything else is left alone.
      */
@@ -221,18 +246,23 @@ final class Val
      * A field rule is either a plain dot-path ("attributes.uid"), a template
      * ("https://x/{attributes.uid}"), or an object:
      *   {"path": "...", "as": "int|string|bool|float", "default": ...}
+     *
+     * "extract" runs a regular expression over the value first and keeps capture
+     * group 1, for sites that pack two numbers into one caption.
      */
     public static function field(mixed $rule, array $item, array $extraVars = []): mixed
     {
-        $as   = null;
-        $map  = null;
-        $find = null;
-        $pick = null;
+        $as      = null;
+        $map     = null;
+        $find    = null;
+        $pick    = null;
+        $extract = null;
         if (is_array($rule)) {
             $as      = $rule['as']      ?? null;
             $map     = $rule['map']     ?? null;
             $find    = $rule['find']    ?? null;
             $pick    = $rule['pick']    ?? null;
+            $extract = $rule['extract'] ?? null;
             $default = $rule['default'] ?? null;
             $spec    = $rule['path']    ?? $rule['template'] ?? null;
             if ($spec === null) {
@@ -266,6 +296,17 @@ final class Val
             return $default;
         }
 
+        // "extract": keep one group out of the text before anything else reads it.
+        // Namava names an episode "فصل ۴ قسمت ۷" — two numbers in one string, so
+        // "first integer found" would take the season for the episode number.
+        if (is_string($extract) && $extract !== '' && is_scalar($value)) {
+            $hit = preg_match('~' . str_replace('~', '\~', $extract) . '~u', (string) $value, $m);
+            if ($hit !== 1) {
+                return $default;
+            }
+            $value = $m[1] ?? $m[0];
+        }
+
         if (is_array($map) && is_scalar($value)) {
             $mapped = self::applyMap((string) $value, $map);
             if ($mapped === null) {
@@ -280,6 +321,7 @@ final class Val
             'bool'     => (bool) $value,
             'string'   => is_scalar($value) ? (string) $value : null,
             'duration' => self::duration((string) $value),
+            'minutes'  => self::minutes($value),
             'phone'    => self::phone((string) $value),
             default    => $value,
         };
