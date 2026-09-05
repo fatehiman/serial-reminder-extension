@@ -162,6 +162,12 @@ exact match first, then looks for a key inside the text, longest key first.
 
 Use `"selector": ".show-name"` instead of `source` to read an element.
 
+`fallback` only runs when `enrich` is missing or failed, and it carries the same
+timing risk described above: on an in-page navigation the title can still be the
+previous episode's. Treat it as a safety net for when the API changes, not as the
+normal path. If a site gives you no usable title at all — filmnet's is just
+"فیلمنت" on every page — write no fallback rather than one that pretends to work.
+
 ---
 
 ## `account` — which mobile number is logged in
@@ -366,7 +372,105 @@ Use `*` in a path to collect every element of an array: `data.*.title`.
 
 ---
 
-## Testing a new provider
+## Building a new provider, step by step
+
+This is the order the three existing providers were actually written in. It
+takes about half an hour per site.
+
+### 1. Watch the site do the work
+
+Log in, open a **serial** (not a film), and start an episode. Then press F12 →
+**Network** → filter **Fetch/XHR**, and reload the page.
+
+You are looking for the one response that names the episode. On all three sites
+so far it existed and was easy to spot. Note down:
+
+- the **watch page URL** shape (`/w/{id}`, `/play/{id}/p`, …) → `urlPattern`
+- the request that returns the episode → `enrich`
+- the request that returns the whole series → `catalog`
+- any **custom headers** the site sends (`did`, `x-source-p`, `Authorization`, …)
+
+### 2. Find out what the server is allowed to call
+
+This is the important one, because the hourly check runs with no login at all.
+Replay the catalog request with `curl`, from your machine and then from the
+server, dropping the headers one at a time:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}
+' 'https://site/api/...'          # nothing
+curl -s ... -H 'did: anything' -H 'x-source-p: 202314' 'https://site/...'  # gateway headers only
+```
+
+Very often the catalog is public and only the *user's* endpoints need a token.
+Sheyda is exactly that: `getEpisodeByUid` demands the JWT, but
+`getEpisodePageByUid` returns the same episode and is public. Look for the
+public twin before giving up — do not put a login token on the server.
+
+If a request needs a device id, try a made-up one. All three sites accepted any
+string.
+
+### 3. Write the file and test the server half
+
+```bash
+php server/bin/sr.php providers      # valid JSON? correct name and matches?
+```
+
+Then run the catalog directly, without needing a show in the database yet:
+
+```bash
+php -r 'require "server/bootstrap.php";
+  $p = SR\Providers::get("newsite");
+  $r = SR\Catalog::fetch($p, ["seriesKey" => "…", "refKey" => "…"]);
+  echo count($r["episodes"]), " episodes, error=", var_export($r["error"], true), "
+";
+  print_r(array_slice($r["episodes"], 0, 3));'
+```
+
+Check the season and episode numbers against what the site's own page shows.
+That is where the mistakes are.
+
+### 4. Test the browser half against the real page
+
+The `watch` half runs in the browser, so test it there rather than guessing.
+Pull the helper functions straight out of the shipped tracker so you are testing
+the real code, and run the `enrich` block in the page's console:
+
+```bash
+# everything from "function digits(" up to the "detection" banner
+sed -n '/^  function digits(/,/detection \*\//p' extension/content/tracker.js
+```
+
+Paste that into the console on a watch page, then paste your `enrich` spec and
+call the same steps `detect()` does. Compare the result with the page.
+
+**Test it with a deliberately wrong `document.title`.** A single page app changes
+the URL before the title, so anything read from the title is a race. That bug
+filed a season-2 episode as season 1 on a live account.
+
+### 5. Try it for real
+
+```bash
+scp server/providers/newsite.json Ger1-root:/tmp/
+ssh Ger1-root 'D=/mnt/ger_hd1/www/serial-reminder
+  mv /tmp/newsite.json $D/app/providers/
+  chown serial-reminder:serial-reminder $D/app/providers/newsite.json
+  sudo -u serial-reminder php8.4 $D/app/bin/sr.php providers'
+```
+
+Then in Chrome: extension **Settings → Reload site scripts**, and play an
+episode. Watch it arrive:
+
+```bash
+ssh Ger1-root 'sqlite3 -header -column /mnt/ger_hd1/www/serial-reminder/data/serial-reminder.sqlite   "SELECT s.provider, e.season, e.number, e.watched_seconds, e.position_seconds
+     FROM episodes e JOIN serials s ON s.id = e.serial_id WHERE s.provider = \"newsite\";"'
+```
+
+No PHP changed, so no opcache flush is needed for a provider-only change.
+
+---
+
+## Testing and debugging
 
 ```bash
 php server/bin/sr.php providers                 # is the file valid JSON?
@@ -383,3 +487,21 @@ If nothing happens at all:
 1. Is the site in `matches`? Check *extension Settings → Site scripts loaded*.
 2. Press **Reload site scripts** — Chrome caches the list for 6 hours.
 3. Does `urlPattern` really match the watch page URL?
+4. Is the tab one that was **already open** before the extension last reloaded?
+   It should be picked up automatically now, but reloading the page settles it.
+5. Check the server log for what did or did not arrive:
+   `ssh Ger1-root 'grep "POST /api/watch" /mnt/ger_hd1/www/serial-reminder/logs/access_log | tail'`
+
+## Mistakes these three sites actually made us fix
+
+Worth reading before writing a fourth — every one of these was a real bug.
+
+| Trap | What happened |
+|---|---|
+| An `order` field that is not the episode number | Sheyda counts position in the season, and season 2 opens with a special, so `order: 7` is episode 6. Take the number from the title. |
+| Reading anything from `document.title` | The SPA updates the URL first. A season-2 episode was filed as season 1. |
+| Unreleased episodes in the list | Every site lists them, each with a different flag (`timeLeftToPublish`, `releaseStatus`, `published_at`). Miss it and every show looks like it has a new episode. |
+| The player resuming near the end | Opening an episode can put the position at 90% in two seconds. Never treat position alone as proof. |
+| `credentials: "include"` on a cross-origin API | Sheyda's gateway answers **504**. `same-origin` still sends cookies to a site's own API. |
+| A player that is not there yet | Filmnet's video.js element appears about two seconds after load. The default `video` selector is right, it just needs patience. |
+| Durations as text | `"01:05:39"` needs `as: "duration"`, otherwise it reads as the number 1. |

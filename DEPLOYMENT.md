@@ -17,6 +17,7 @@ Deployed: 2026-09-05. Passwords and keys are in `CREDENTIALS.md` (not in git).
 | PHP | 8.4.25, pool socket `/run/php/17886125251977616.sock` |
 | PHP modules added for this app | **`php8.4-sqlite3`** (installed 2026-09-05) |
 | Database | SQLite, one file, WAL mode |
+| Providers | filimo, sheyda, filmnet — JSON files in `app/providers/`, no login needed by the server |
 | TLS | Virtualmin-managed certificate (`ssl.combined`) |
 | Unix user | `serial-reminder` (no sudo) |
 | Cron | hourly episode check + nightly backup, in `serial-reminder`'s crontab |
@@ -48,11 +49,26 @@ Only `public_html` is web-reachable.
 ├── data/
 │   └── serial-reminder.sqlite  the database (chmod 660, dir 750)
 ├── backups/                    sr-1.sqlite … sr-7.sqlite (one per weekday)
-└── logs/                       check.log, backup.log
+└── logs/                       check.log, backup.log, access_log, error_log
 ```
 
 `public/index.php` looks for `../app/bootstrap.php` first and falls back to
 `../bootstrap.php`, so the same file works on the server and in a local checkout.
+
+### What the database holds
+
+| Table | What is in it |
+|---|---|
+| `users` | one row — username, password hash, API key |
+| `sessions`, `login_tickets` | dashboard logins; tickets are single use, 60 seconds |
+| `serials` | one row per followed show. `confirmed = 0` means "opened but never really watched" — hidden, and swept after `candidate_days` (90). |
+| `episodes` | every episode, whether from a watch report (`source = watch`) or the hourly check (`source = catalog`) |
+| `provider_accounts` | which mobile number each site is logged in with |
+| `schema_migrations` | which `.sql` files have run |
+
+**Migrations run once each, in filename order**, tracked in `schema_migrations`.
+They do not have to be idempotent — `002` and later use plain `ALTER TABLE`.
+Add a new one as `005_*.sql`; `bin/sr.php migrate` picks it up.
 
 ## 3. Connecting
 
@@ -139,6 +155,16 @@ overwrite the live settings or the database.
 > Extracting **over** the old directory leaves deleted files behind. If a release
 > removes a file, delete it on the server by hand, or extract into a new
 > directory and swap.
+
+### Updating the extension
+
+The extension is **not** deployed — it is loaded unpacked from the `extension/`
+folder in the checkout. After a `git pull` that touched `extension/`, reload it
+at `chrome://extensions` (the ↻ icon). Only that folder matters; the version in
+`manifest.json` is cosmetic.
+
+The background worker now re-injects the tracker into tabs that are already
+open, so reloading the extension is enough — no need to reload each page.
 
 ### Deploying only a provider script
 
@@ -279,6 +305,9 @@ Never copy a live WAL database with `cp` — use `.backup`, which is consistent.
 | Dashboard fine, extension says 401 | Wrong API key, or Apache stripped the `Authorization` header — the `.htaccess` rewrite that re-adds it must be present. |
 | Checker says "request failed or returned no JSON" | The site changed its API, or it is blocking the server. Test the URL by hand from ger1 with `curl`. |
 | Every show suddenly shows new episodes | A provider's `skipWhen` no longer filters "coming soon" entries. |
+| Extension reaches the server but never posts a watch | The tracker is not in that tab. Check `grep "POST /api/watch" logs/access_log`. Reload the extension; reload the page if it persists. |
+| A show never appears on the dashboard | It needs 20 minutes of real playing, or a finished episode. Look for it with `SELECT * FROM serials WHERE confirmed = 0`. |
+| Wrong season on one provider | Something in that provider reads `document.title`. In a single page app the title lags the URL — take the value from the API. |
 | Apache logs | `tail -20 /var/log/apache2/error.log`, and this domain's own logs in `$D/logs/` |
 
 ### Rules for this box

@@ -19,6 +19,15 @@ your own machine.
 | Password | |
 | API key | printed by `php bin/sr.php user:add <username>` |
 
+## Streaming accounts being tracked
+
+Which mobile number each site is logged in with. The extension fills these in on
+the dashboard by itself; keeping a copy here is just convenient.
+
+| Site | Mobile | Account name |
+|---|---|---|
+| | | |
+
 ## Server
 
 | | |
