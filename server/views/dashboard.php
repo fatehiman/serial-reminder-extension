@@ -48,12 +48,12 @@ $newCount  = count(array_filter($serials, static fn ($s) => $s['hasNew']));
       </div>
 
       <div class="card-body">
-        <h3 title="<?= e($s['title']) ?>"><?= e($s['title']) ?></h3>
+        <h3 dir="auto" title="<?= e($s['title']) ?>"><?= e($s['title']) ?></h3>
         <p class="prov"><?= e($s['provider']) ?></p>
 
         <?php if ($next): ?>
           <p class="next">Watch next: <strong><?= e($next['label']) ?></strong>
-            <?= $next['title'] ? '<span class="ep-title">' . e($next['title']) . '</span>' : '' ?>
+            <?= $next['title'] ? '<span class="ep-title" dir="auto">' . e($next['title']) . '</span>' : '' ?>
           </p>
         <?php elseif ($last): ?>
           <p class="next done">Seen everything — last was <strong><?= e($last['label']) ?></strong></p>
@@ -74,7 +74,7 @@ $newCount  = count(array_filter($serials, static fn ($s) => $s['hasNew']));
       <button class="mini" data-act="seen" data-id="<?= (int) $s['id'] ?>"
               <?= $next ? '' : 'disabled' ?>
               data-season="<?= (int) ($next['season'] ?? 0) ?>"
-              data-episode="<?= (int) ($next['number'] ?? 0) ?>">Mark <?= e($next['label'] ?? '—') ?> seen</button>
+              data-episode="<?= (int) ($next['number'] ?? 0) ?>"><?= $next ? 'Mark ' . e($next['label']) . ' seen' : 'Nothing new' ?></button>
       <button class="mini" data-act="check" data-id="<?= (int) $s['id'] ?>">Check now</button>
       <select class="mini" data-act="status" data-id="<?= (int) $s['id'] ?>">
         <?php foreach (['watching' => 'Watching', 'paused' => 'Paused', 'finished' => 'Finished'] as $k => $l): ?>

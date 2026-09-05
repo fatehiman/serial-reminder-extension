@@ -60,8 +60,7 @@ final class Api
                     'episodeId'     => (int) $res['episode']['id'],
                     'watched'       => (int) $res['episode']['watched'] === 1,
                     'justCompleted' => $res['justCompleted'],
-                    'newSerial'     => $res['created'] && (int) $res['episode']['id'] > 0
-                                       && $res['serial']['created_at'] === $res['serial']['updated_at'],
+                    'newSerial'     => $res['newSerial'],
                 ]);
 
             case $route === '/serials' && $method === 'GET':

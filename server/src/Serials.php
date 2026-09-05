@@ -18,7 +18,7 @@ final class Serials
      *                season, episode, episodeTitle, episodeUrl, episodeKey,
      *                position, duration, watchedDelta, ended
      *
-     * @return array{serial:array, episode:array, created:bool, justCompleted:bool}
+     * @return array{serial:array, episode:array, created:bool, justCompleted:bool, newSerial:bool}
      */
     public static function recordWatch(int $userId, array $in): array
     {
@@ -118,6 +118,7 @@ final class Serials
             'episode'       => Db::one('SELECT * FROM episodes WHERE id = ?', [$episodeId]) ?? [],
             'created'       => $created,
             'justCompleted' => $justCompleted,
+            'newSerial'     => !$wasKnown,
         ];
     }
 
