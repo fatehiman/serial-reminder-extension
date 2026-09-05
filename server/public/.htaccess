@@ -1,0 +1,30 @@
+# Everything that is not a real file goes to the front controller.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # Apache strips the Authorization header before PHP sees it.
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+# The home page is served through DirectoryIndex and bypasses the rules above,
+# so point it at the front controller explicitly.
+DirectoryIndex index.php
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "same-origin"
+    Header always set X-Frame-Options "SAMEORIGIN"
+</IfModule>
+
+# Never serve the database or config, whatever happens to the layout.
+<FilesMatch "\.(sqlite|sqlite-wal|sqlite-shm|db|md|sql)$">
+    Require all denied
+</FilesMatch>

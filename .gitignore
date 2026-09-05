@@ -1,0 +1,17 @@
+# Secrets — never commit (this repo is public)
+CREDENTIALS.md
+server/config.php
+server/data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Build / local junk
+node_modules/
+extension/*.zip
+*.log
+.DS_Store
+Thumbs.db
+
+# local test data
+/data/

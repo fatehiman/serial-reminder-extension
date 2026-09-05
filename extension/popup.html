@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Serial Reminder</title>
+<link rel="stylesheet" href="ui.css">
+</head>
+<body class="popup">
+  <header>
+    <span class="dot"></span>
+    <strong>Serial Reminder</strong>
+  </header>
+
+  <p id="state" class="state">Checking…</p>
+  <p id="watching" class="watching" hidden></p>
+
+  <div class="row">
+    <button class="btn" id="dash">My shows</button>
+    <button class="btn ghost" id="opts">Settings</button>
+  </div>
+
+  <p class="foot"><span id="queue"></span></p>
+<script type="module" src="popup.js"></script>
+</body>
+</html>

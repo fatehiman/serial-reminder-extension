@@ -1,0 +1,99 @@
+{
+  "name": "filimo",
+  "label": "Filimo",
+  "version": 3,
+  "enabled": true,
+  "homepage": "https://www.filimo.com/",
+
+  "_comment": [
+    "Filimo is a React single page app with hashed CSS class names, so reading the",
+    "DOM is fragile. Instead we use the site's own public JSON API, which needs no",
+    "login and returns exact season / episode numbers.",
+    "",
+    "  /api/fa/v1/movie/movie/one/uid/{uid}        one episode + its parent series",
+    "  /api/fa/v1/movie/serial/allseason/uid/{uid} the seasons of that series",
+    "  /api/fa/v1/movie/serial/episodebyseason/... every episode of one season",
+    "",
+    "If the API ever changes shape, 'fallback' reads document.title instead, which",
+    "looks like: 'Badnam - fasl 1 ghesmat 22: subtitle'."
+  ],
+
+  "matches": ["*://www.filimo.com/*", "*://filimo.com/*"],
+
+  "watch": {
+    "urlPattern": "^https?://(?:www\\.)?filimo\\.com/w/([A-Za-z0-9_-]+)",
+    "urlFields": ["episodeKey"],
+
+    "video": { "selector": "video" },
+
+    "enrich": {
+      "url": "https://www.filimo.com/api/fa/v1/movie/movie/one/uid/{episodeKey}",
+      "cacheSeconds": 21600,
+      "requireTruthy": "data.attributes.General.serial.enable",
+      "fields": {
+        "seriesKey":    { "path": "data.attributes.General.serial.parent_id", "as": "string" },
+        "seriesTitle":  "data.attributes.General.serial.title",
+        "seriesSlug":   "data.attributes.General.serial.title_seo",
+        "season":       { "path": "data.attributes.General.serial.season_id", "as": "int" },
+        "episode":      { "path": "data.attributes.General.serial.serial_part", "as": "int" },
+        "episodeTitle": "data.attributes.General.title",
+        "poster":       "data.attributes.General.cover_data.vertical",
+        "duration":     { "path": "data.attributes.General.duration.value", "as": "int" },
+        "seriesUrl":    "https://www.filimo.com/m/{data.attributes.General.serial.title_seo}",
+        "episodeUrl":   "https://www.filimo.com/w/{data.attributes.General.uid}"
+      },
+      "lowercase": ["seriesUrl"]
+    },
+
+    "fallback": {
+      "source": "document.title",
+      "pattern": "^(.+?)\\s*-\\s*فصل\\s*([0-9۰-۹]+)\\s*قسمت\\s*([0-9۰-۹]+)\\s*(?::\\s*(.*?))?$",
+      "fields": ["seriesTitle", "season", "episode", "episodeTitle"],
+      "seriesKeyFrom": "seriesTitle",
+      "episodeUrl": "{url}"
+    }
+  },
+
+  "catalog": {
+    "refKeyFrom": "episodeUrl",
+    "refKeyPattern": "~^https?://(?:www\\.)?filimo\\.com/w/([A-Za-z0-9_-]+)~",
+    "maxRequests": 12,
+    "headers": { "Accept": "application/json" },
+
+    "steps": [
+      {
+        "id": "seasons",
+        "url": "https://www.filimo.com/api/fa/v1/movie/serial/allseason/uid/{refKey}",
+        "type": "json",
+        "list": "data.attributes.data",
+        "fields": {
+          "season":      { "path": "serial_season_part", "as": "int" },
+          "episodesUrl": "episodes_link"
+        },
+        "skipWhen": [{ "path": "episodes_link", "empty": true }]
+      },
+      {
+        "id": "episodes",
+        "forEach": "seasons",
+        "url": "{item.episodesUrl}",
+        "type": "json",
+        "list": "included",
+        "emit": true,
+        "fields": {
+          "number":     { "path": "attributes.serial_part", "as": "int" },
+          "season":     { "path": "attributes.serial_season_part", "as": "int" },
+          "title":      "attributes.movie_title",
+          "url":        "https://www.filimo.com/w/{attributes.uid}",
+          "duration":   { "path": "attributes.duration", "as": "int" },
+          "releasedAt": "attributes.publish_date"
+        },
+        "skipWhen": [
+          { "path": "type", "matches": "~^(?!movies$).*~" },
+          { "path": "attributes.timeLeftToPublish", "gt": 0 },
+          { "path": "attributes.watch_action.type", "eq": "commingsoon" },
+          { "path": "attributes.uid", "empty": true }
+        ]
+      }
+    ]
+  }
+}

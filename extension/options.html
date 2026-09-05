@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Serial Reminder — Settings</title>
+<link rel="stylesheet" href="ui.css">
+</head>
+<body class="page">
+<main class="sheet">
+  <h1><span class="dot"></span> Serial Reminder</h1>
+  <p class="sub">Two settings. That is all.</p>
+
+  <form id="form">
+    <label>API key
+      <input type="text" id="apiKey" spellcheck="false" autocomplete="off"
+             placeholder="paste the key from your dashboard">
+      <small>Dashboard &rarr; Settings &rarr; API key.</small>
+    </label>
+
+    <label>API URL
+      <input type="text" id="apiUrl" spellcheck="false" autocomplete="off"
+             placeholder="https://serial-reminder.kimiasoft.com/api">
+      <small>Change this only if your server is somewhere else.</small>
+    </label>
+
+    <div class="row">
+      <button class="btn" type="submit">Save</button>
+      <button class="btn ghost" type="button" id="test">Test connection</button>
+    </div>
+  </form>
+
+  <p id="msg" class="msg"></p>
+
+  <section class="info" id="info" hidden>
+    <h2>Status</h2>
+    <p class="kv"><span>Account</span><strong id="i-user">—</strong></p>
+    <p class="kv"><span>Site scripts loaded</span><strong id="i-prov">—</strong></p>
+    <p class="kv"><span>Reports waiting to send</span><strong id="i-queue">—</strong></p>
+    <p class="kv"><span>Last problem</span><strong id="i-err">—</strong></p>
+    <div class="row">
+      <button class="btn ghost" type="button" id="reload-prov">Reload site scripts</button>
+      <button class="btn ghost" type="button" id="open-dash">Open dashboard</button>
+    </div>
+  </section>
+</main>
+<script type="module" src="options.js"></script>
+</body>
+</html>
