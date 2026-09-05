@@ -117,7 +117,7 @@ switch ($command) {
         if (!Notify::enabled()) {
             exitWith("notify.url is empty in config.php, so nothing is ever sent.");
         }
-        $text = $args[0] ?? "🎬 Serial Reminder\nThis is a test message.\n"
+        $text = $args[0] ?? "Serial Reminder\nThis is a test message.\n"
                           . rtrim((string) SR\Config::get('app_url', ''), '/') . '/dashboard';
         $err  = Notify::send($text);
         out($err === null ? 'sent' : 'FAILED: ' . $err);

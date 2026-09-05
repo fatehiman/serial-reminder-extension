@@ -94,7 +94,8 @@ final class Notify
         $count = count($episodes);
         $shown = array_slice($episodes, 0, $max);
 
-        $lines = ['🎬 ' . (string) $serial['title']];
+        // No emoji here on purpose — see stripAstral() below.
+        $lines = [(string) $serial['title']];
         $lines[] = $count === 1
             ? 'A new episode on ' . (string) $serial['provider'] . ':'
             : $count . ' new episodes on ' . (string) $serial['provider'] . ':';
@@ -133,7 +134,7 @@ final class Notify
             return 'notify.url is not set in config.php';
         }
         $brk = (string) Config::get('notify.line_break', '_C');
-        $msg = str_replace(["\r\n", "\n"], $brk, $text);
+        $msg = str_replace(["\r\n", "\n"], $brk, self::stripAstral($text));
 
         $url = str_replace('{msg}', rawurlencode($msg), $template);
         $res = Http::get($url);
@@ -145,6 +146,25 @@ final class Notify
             return 'notifier answered HTTP ' . $res['status'];
         }
         return null;
+    }
+
+    /**
+     * Take out every character above U+FFFF — in practice, emoji.
+     *
+     * The gateway cannot carry them. An emoji in the middle of a message is
+     * silently dropped, and a message that *starts* with one is thrown away
+     * whole: it is accepted, it gets a telegramResult id, and it never
+     * arrives. That is the worst possible failure, because nothing reports it.
+     * Persian, the em dash, colons and many lines are all fine — this was
+     * measured against the live gateway, message by message.
+     *
+     * Show and episode titles come from the sites, so one of them may bring an
+     * emoji along one day. Stripping here means the message still goes out.
+     */
+    public static function stripAstral(string $text): string
+    {
+        $clean = preg_replace('/[\x{10000}-\x{10FFFF}]/u', '', $text);
+        return trim(is_string($clean) ? $clean : $text);
     }
 
     private static function urlTemplate(): string

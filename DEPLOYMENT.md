@@ -310,6 +310,7 @@ Never copy a live WAL database with `cp` — use `.backup`, which is consistent.
 | Checker says "needs the 'iran' relay, which config.php does not define" | `relays` is missing from `config.php`. Section 13. |
 | Namava alone finds nothing, no error | The relay is down or its key changed, or namava's own API moved. Section 13 has the two commands that tell those apart. |
 | No Telegram message for an episode that is clearly new | Was it the show's **first** check? Those are silent on purpose. Otherwise run `sr.php check --serial=N --force` and read the line it prints; `NOTIFY FAILED` gives the reason. `SELECT number, notified_at FROM episodes WHERE serial_id = N` shows what was already announced. |
+| A message is accepted but never arrives | Almost certainly an emoji. The gateway throws away any message that **starts** with one, and still answers 200 with an id. See "What the gateway cannot carry" in section 14. |
 | The same episode was announced twice | Should be impossible — `notified_at` is stamped only after a message really went out. If it happens, two checks ran at the same moment; look for a second cron entry with `crontab -u serial-reminder -l`. |
 | Every show suddenly shows new episodes | A provider's `skipWhen` no longer filters "coming soon" entries. |
 | Extension reaches the server but never posts a watch | The tracker is not in that tab. Check `grep "POST /api/watch" logs/access_log`. Reload the extension; reload the page if it persists. |
@@ -456,6 +457,28 @@ sending:
 
 Migration `005_notify.sql` stamps every episode that existed when it ran, for
 the same reason.
+
+### What the gateway cannot carry: emoji
+
+Measured against the live gateway, one message at a time, on 2026-09-05:
+
+| In the message | Result |
+|---|---|
+| Persian text, even as the first character | arrives |
+| em dash `—`, colon, four or more lines | arrives |
+| a link | arrives |
+| an emoji in the middle | arrives, **without** the emoji |
+| an emoji as the **first** character | **never arrives** |
+
+The last row is the dangerous one. The request is accepted, HTTP 200, with a
+normal `telegramResult=<id>` — and nothing is delivered. Nothing in the answer
+says the message was lost, so `notified_at` gets stamped and the episode is
+never announced again.
+
+`Notify::stripAstral()` therefore removes every character above U+FFFF before
+sending, and no message template contains an emoji. Show and episode titles
+come from the movie sites, so one of them may bring an emoji along one day;
+stripping means that message still goes out.
 
 ### Testing it
 
