@@ -40,8 +40,9 @@ and every Chrome profile you use.
 - **Only follows shows you really watch.** Opening a page and sampling a minute
   does **not** add it to your list. A show joins the list when you finish an
   episode of it, or simply play **20 minutes** of one. Until then the progress
-  is still counted quietly, so 15 minutes today and 15 tomorrow still add up,
-  and a show you never came back to is dropped after 30 days.
+  is still counted quietly, so 15 minutes today and 15 tomorrow still add up.
+  A show that never reached that point, and that you never came back to, is
+  forgotten after 90 days. Shows on your list are only ever removed by you.
 
 All of these numbers live in `config.php`.
 - **Finds new episodes by itself.** Every hour the server asks each show's site

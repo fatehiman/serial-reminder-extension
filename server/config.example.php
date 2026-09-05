@@ -14,6 +14,11 @@ return [
     // Dashboard session lifetime.
     'session_days' => 30,
 
+    // A show you opened but never really watched is kept, hidden, this long in
+    // case you come back to it. These rows never appear on the dashboard, so
+    // this is the only thing that removes them.
+    'candidate_days' => 90,
+
     // Outgoing HTTP for the new-episode checker.
     'http' => [
         'timeout'    => 20,

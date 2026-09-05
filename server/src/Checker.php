@@ -56,9 +56,15 @@ final class Checker
     /**
      * Throw away shows that were opened once, never watched, and never came back.
      * Without this every page you glance at leaves a row behind forever.
+     *
+     * These rows were never shown on the dashboard, so nobody could have removed
+     * them by hand — this is the only thing that cleans them up. A show you can
+     * actually see is never touched here; you remove that one yourself.
      */
-    public static function pruneCandidates(int $olderThanDays = 30): int
+    public static function pruneCandidates(?int $olderThanDays = null): int
     {
+        $olderThanDays ??= (int) Config::get('candidate_days', 90);
+
         return Db::q(
             "DELETE FROM serials
              WHERE confirmed = 0
