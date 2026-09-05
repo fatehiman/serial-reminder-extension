@@ -35,8 +35,14 @@ return [
         'min_ratio'   => 0.70,
         // Or it simply played for 20 minutes, when the length is unknown.
         'min_seconds' => 1200,
-        // Or the real playing time adds up to 70% of the length, for players
-        // whose reported position cannot be trusted.
+        // Or the real playing time adds up to 70% of the length, which counts
+        // on its own however the position behaves.
         'ratio_of_duration' => 0.70,
+        // Proof that you really played it, not just that the position is high.
+        // Sites resume where you left off, so the position can read 90% two
+        // seconds after opening a page; the scrub bar does the same. The player
+        // rule above only counts once this much has actually played.
+        'min_real_ratio'   => 0.25,   // a quarter of the episode length
+        'min_real_seconds' => 300,    // and never less than five minutes
     ],
 ];

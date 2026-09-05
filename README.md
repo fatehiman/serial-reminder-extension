@@ -30,14 +30,20 @@ and every Chrome profile you use.
 
 - **Remembers your place.** While an episode plays, the extension counts the real
   playing time and the player position and sends it to the server.
-- **Decides when an episode is finished.** An episode counts as watched when the
-  player reaches **70%** of it, or when it played for **20 minutes** and the
-  length is unknown. 70%, not more, because people skip ads, the recap at the
-  start and the credits at the end. Both numbers are in `config.php`.
+- **Decides when an episode is finished.** An episode counts as watched when
+  **both** are true: the player got past **70%** of it, *and* you really played
+  at least a quarter of its length (never less than 5 minutes). 70%, not more,
+  because people skip ads, the recap and the credits. The second half matters
+  because the position lies — sites resume where you left off, so opening an
+  episode can show 90% after two seconds. Playing 70% of the length counts on
+  its own, and if the length is unknown, 20 minutes of playing is the whole test.
 - **Only follows shows you really watch.** Opening a page and sampling a minute
-  does **not** add it to your list. A show joins the list the first time one of
-  its episodes passes the rule above. Until then the progress is still counted,
-  quietly, so watching 15 minutes today and 15 tomorrow still adds up.
+  does **not** add it to your list. A show joins the list when you finish an
+  episode of it, or simply play **20 minutes** of one. Until then the progress
+  is still counted quietly, so 15 minutes today and 15 tomorrow still add up,
+  and a show you never came back to is dropped after 30 days.
+
+All of these numbers live in `config.php`.
 - **Finds new episodes by itself.** Every hour the server asks each show's site
   which episodes exist and marks the ones you have not seen.
 - **One dashboard for every computer.** All data lives on the server. Open

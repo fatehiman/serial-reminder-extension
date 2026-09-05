@@ -97,16 +97,26 @@ final class Serials
         $isWatched     = self::applyWatchedRule($row, $ended);
         $justCompleted = $isWatched && !$wasWatched;
 
-        // The show joins the list only now, the first time an episode really
-        // counted as watched. Opening a page and sampling a minute does nothing.
+        // When does a show join the list? When you have really sat and watched:
+        // either the episode is finished, or you played at least 20 minutes of
+        // it. Opening a page and sampling a minute never counts.
+        $minToFollow = (int) Config::get('watched_rules.min_seconds', 1200);
+        $playedEnough = (int) ($row['watched_seconds'] ?? 0) >= $minToFollow;
+
         $justFollowed = false;
-        if ($isWatched && !$wasFollowed) {
+        if (($isWatched || $playedEnough) && !$wasFollowed) {
+            // Nobody starts a serial at episode 22, so everything before this
+            // point is treated as already seen. "Before" excludes the episode
+            // you are on unless you actually finished it.
+            $upTo = $isWatched ? $episode : $episode - 1;
+
             Db::q(
                 'UPDATE serials SET confirmed = 1, backfill_season = ?, backfill_number = ? WHERE id = ?',
-                [$season, $episode, $serialId]
+                [$season, $upTo, $serialId]
             );
-            // Nobody starts a serial at episode 22: treat the earlier ones as seen.
-            self::markWatchedUpTo($serialId, $season, $episode);
+            if ($upTo >= 1) {
+                self::markWatchedUpTo($serialId, $season, $upTo);
+            }
             $justFollowed = true;
         }
 
@@ -126,9 +136,22 @@ final class Serials
     }
 
     /**
-     * Is this episode finished? 70% of the player counts, because people skip
-     * ads, recaps and credits. When the length is unknown, 20 minutes of real
-     * playing time counts instead. All three numbers live in config.php.
+     * Is this episode finished?
+     *
+     * Two things must be true, because neither alone is trustworthy:
+     *
+     *   1. the player got past 70% of the episode (or reached the end).
+     *      70%, not 90%: people skip ads, the recap and the closing credits.
+     *   2. you really played a fair part of it — at least a quarter of its
+     *      length, and never less than five minutes.
+     *
+     * Rule 2 exists because the player position lies. Sites resume where you
+     * left off, so opening an episode can put the position at 90% after two
+     * seconds; dragging the scrub bar does the same.
+     *
+     * Plenty of real playing time on its own also counts, and when the length
+     * is unknown 20 minutes of playing is the whole test. Every number is in
+     * config.php.
      */
     private static function applyWatchedRule(array $ep, bool $ended): bool
     {
@@ -139,17 +162,23 @@ final class Serials
         $position = (int) ($ep['position_seconds'] ?? 0);
         $watched  = (int) ($ep['watched_seconds'] ?? 0);
 
-        $rules     = (array) Config::get('watched_rules', []);
-        $minRatio  = (float) ($rules['min_ratio'] ?? 0.70);
-        $minSecs   = (int)   ($rules['min_seconds'] ?? 1200);
-        $ratioOfD  = (float) ($rules['ratio_of_duration'] ?? 0.70);
+        $rules        = (array) Config::get('watched_rules', []);
+        $minRatio     = (float) ($rules['min_ratio'] ?? 0.70);
+        $minSecs      = (int)   ($rules['min_seconds'] ?? 1200);
+        $ratioOfD     = (float) ($rules['ratio_of_duration'] ?? 0.70);
+        $minRealRatio = (float) ($rules['min_real_ratio'] ?? 0.25);
+        $minRealSecs  = (int)   ($rules['min_real_seconds'] ?? 300);
 
         $ratio = $duration > 0 ? min(1.0, $position / $duration) : 0.0;
 
-        $done = $ended
-            || ($duration > 0 && $ratio >= $minRatio)
-            || ($duration > 0 && $watched >= (int) round($duration * $ratioOfD))
-            || ($duration <= 0 && $watched >= $minSecs);
+        if ($duration > 0) {
+            $realNeeded  = max($minRealSecs, (int) round($duration * $minRealRatio));
+            $reachedEnd  = $ended || $ratio >= $minRatio;
+            $done = ($reachedEnd && $watched >= $realNeeded)
+                 || $watched >= (int) round($duration * $ratioOfD);
+        } else {
+            $done = $watched >= $minSecs;
+        }
 
         Db::q(
             "UPDATE episodes SET progress_ratio = ?, watched = ?, updated_at = datetime('now') WHERE id = ?",
