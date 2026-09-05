@@ -54,6 +54,11 @@ The extension refreshes the list every 6 hours, or immediately from
 The tracker needs three things before it will report anything:
 `seriesKey`, `seriesTitle` and `episode`. Everything else is optional.
 
+Reporting is not the same as following. The server keeps the reports, but the
+show only appears on the dashboard once one episode passes the watched rule
+(70% of the player, or 20 minutes when the length is unknown). So a wrong
+`urlPattern` that matches a browse page costs nothing — it just never confirms.
+
 | Field | Meaning |
 |---|---|
 | `seriesKey` | stable id of the **show** on that site. Not the episode. |
@@ -85,6 +90,41 @@ the request is same-origin so your login cookie is sent automatically.
 
 Finding the right URL takes five minutes: open a show, press F12 → **Network** →
 filter **Fetch/XHR**, and look for the request that carries the episode number.
+
+For a **GraphQL** site, add `method` and `body`. Placeholders work inside the
+body too:
+
+```jsonc
+"enrich": {
+  "url": "https://api.sheyda.com/query",
+  "method": "POST",
+  "headers": { "did": "serial-reminder-web-0000…", "x-source-p": "202314" },
+  "body": {
+    "variables": { "uid": "{episodeKey}" },
+    "query": "query($uid: String!) { getEpisodePageByUid(uid: $uid) { data { episode { uid title } } } }"
+  },
+  "fields": { "episode": { "path": "data.getEpisodePageByUid.data.episode.title", "as": "int" } }
+}
+```
+
+**Cookies.** The request is sent with `credentials: "same-origin"`, so a call to
+the site's own domain carries your login. Set `"credentials": "include"` only if
+a cross-origin API really needs the cookie — and test it, because some gateways
+answer 504 to a cross-origin request that carries credentials (sheyda's does).
+
+### Turning words into numbers
+
+Some sites name seasons instead of numbering them. `map` fixes that: it tries an
+exact match first, then looks for a key inside the text, longest key first.
+
+```jsonc
+"season": {
+  "template": "{title}",           // {title} is the page title
+  "as": "int",
+  "default": 1,
+  "map": { "فصل اول": 1, "فصل دوم": 2, "فصل سوم": 3 }
+}
+```
 
 ### `fallback` — read the page title
 
@@ -150,6 +190,27 @@ turns the answer into rows. A step can loop over the rows of an earlier step.
 }
 ```
 
+A step can `POST` as well, which is how a GraphQL catalog is read:
+
+```jsonc
+{
+  "id": "episodes", "forEach": "seasons", "emit": true,
+  "url": "https://api.sheyda.com/query",
+  "method": "POST",
+  "type": "json",
+  "body": {
+    "variables": { "seasonID": "{item.seasonId}" },
+    "query": "query($seasonID: String!) { getSeasonEpisodes(seasonID: $seasonID) { data { uid title releaseStatus } } }"
+  },
+  "list": "data.getSeasonEpisodes.data",
+  "fields": { "number": { "path": "title", "as": "int" } },
+  "skipWhen": [ { "path": "releaseStatus", "ne": "RELEASED" } ]
+}
+```
+
+Fields a step does not set are inherited from its `forEach` parent, so the
+`season` worked out in the seasons step is carried onto every episode.
+
 ### Variables available in a URL template
 
 `{refKey}` `{seriesKey}` `{seriesUrl}` `{title}` and `{item.<field>}` from the
@@ -165,6 +226,7 @@ The row is dropped when **any** condition is true.
 | `{"path": "x", "empty": false}` | `x` has a value |
 | `{"path": "x", "truthy": true}` | `x` is truthy |
 | `{"path": "x", "eq": "foo"}` | `x` equals `"foo"` |
+| `{"path": "x", "ne": "foo"}` | `x` is anything **but** `"foo"` |
 | `{"path": "x", "gt": 0}` | `x` as a number is greater than 0 |
 | `{"path": "x", "matches": "~re~"}` | the PHP regex matches |
 
@@ -200,6 +262,7 @@ A field is one of:
 | `"https://x/{a.b}"` | a template; `{...}` are paths |
 | `{"path": "a.b", "as": "int"}` | read and convert |
 | `{"path": "a.b", "as": "int", "default": 1}` | …with a fallback value |
+| `{"path": "a.b", "map": {"one": 1}}` | …translating words into values first |
 
 `as` can be `int`, `float`, `bool` or `string`. Persian and Arabic digits
 (`۲۲`, `٢٢`) are converted to normal numbers automatically.

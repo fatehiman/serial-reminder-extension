@@ -62,12 +62,44 @@
 
   function hasHoles(s) { return /\{[A-Za-z0-9_.\-]+\}/.test(s); }
 
-  /** A field rule: a dot path, a "{...}" template, or {path, as, default}. */
+  /** Fill "{...}" placeholders everywhere inside a nested object (a POST body). */
+  function templateDeep(data, vars) {
+    if (typeof data === 'string') return template(data, vars);
+    if (Array.isArray(data)) return data.map((x) => templateDeep(x, vars));
+    if (data && typeof data === 'object') {
+      const out = {};
+      for (const [k, v] of Object.entries(data)) out[template(k, vars)] = templateDeep(v, vars);
+      return out;
+    }
+    return data;
+  }
+
+  /**
+   * Turn words into values: {"season one": 1, "season two": 2}.
+   * Exact match first, then "is this key inside the text", longest key first so
+   * "chapter twelve" never matches a "chapter two" key.
+   */
+  function applyMap(value, map) {
+    const needle = digits(String(value)).trim();
+    for (const k of Object.keys(map)) {
+      if (digits(k).trim() === needle) return map[k];
+    }
+    const keys = Object.keys(map).sort((a, b) => b.length - a.length);
+    for (const k of keys) {
+      const kk = digits(k).trim();
+      if (kk && needle.includes(kk)) return map[k];
+    }
+    return null;
+  }
+
+  /** A field rule: a dot path, a "{...}" template, or {path, as, map, default}. */
   function field(rule, vars) {
     let as = null;
+    let map = null;
     let def;
     if (rule && typeof rule === 'object') {
       as = rule.as || null;
+      map = rule.map || null;
       def = rule.default;
       rule = rule.path != null ? rule.path : rule.template;
     }
@@ -75,6 +107,12 @@
 
     let value = rule.includes('{') ? template(rule, vars) : path(vars, rule);
     if (value == null || value === '') return def;
+
+    if (map && (typeof value === 'string' || typeof value === 'number')) {
+      const mapped = applyMap(value, map);
+      if (mapped == null) return def;
+      value = mapped;
+    }
 
     if (as === 'int') return toInt(value);
     if (as === 'float') { const n = parseFloat(digits(value)); return Number.isFinite(n) ? n : def; }
@@ -147,21 +185,41 @@
     return info;
   }
 
-  /** Ask the site's own API. Same origin, so the login cookie is sent too. */
+  /** Ask the site's own API: exact numbers instead of guessing from the page. */
   async function enrich(spec, vars) {
     const url = template(spec.url || '', vars);
     if (!url || hasHoles(url)) return null;
 
+    // GraphQL sites need a POST with a JSON body.
+    //
+    // "same-origin" still sends the site's own cookies to its own API, which is
+    // what most providers need. Do not switch this to "include" lightly: sheyda's
+    // gateway answers 504 to a cross-origin request that carries credentials.
+    // A provider can still ask for it with "credentials": "include".
+    const method = (spec.method || 'GET').toUpperCase();
+    const init = {
+      method,
+      credentials: spec.credentials || 'same-origin',
+      headers: { 'Accept': 'application/json', ...(spec.headers || {}) },
+    };
+    if (method !== 'GET' && spec.body) {
+      const body = JSON.stringify(templateDeep(spec.body, vars));
+      // Every episode uses the same GraphQL URL, so a hole here would silently
+      // ask about the wrong thing.
+      if (hasHoles(body)) { log('enrich body still has a placeholder', body.slice(0, 200)); return null; }
+      init.headers['Content-Type'] = 'application/json';
+      init.body = body;
+    }
+
+    // The cache key must include the body: with GraphQL the URL never changes.
+    const cacheKey = method + ' ' + url + ' ' + (init.body || '');
     const ttl = (spec.cacheSeconds || 3600) * 1000;
-    const hit = enrichCache.get(url);
+    const hit = enrichCache.get(cacheKey);
     if (hit && Date.now() - hit.at < ttl) return hit.value;
 
     let data;
     try {
-      const res = await fetch(url, {
-        credentials: 'include',
-        headers: { 'Accept': 'application/json', ...(spec.headers || {}) },
-      });
+      const res = await fetch(url, init);
       if (!res.ok) { log('enrich HTTP', res.status, url); return null; }
       data = await res.json();
     } catch (e) {
@@ -171,7 +229,7 @@
 
     if (spec.requireTruthy && !path(data, spec.requireTruthy)) {
       log('not a serial (requireTruthy failed) — ignoring');
-      enrichCache.set(url, { at: Date.now(), value: null });
+      enrichCache.set(cacheKey, { at: Date.now(), value: null });
       return null;
     }
 
@@ -186,7 +244,7 @@
     out.season  = toInt(out.season);
     out.episode = toInt(out.episode);
 
-    enrichCache.set(url, { at: Date.now(), value: out });
+    enrichCache.set(cacheKey, { at: Date.now(), value: out });
     return out;
   }
 

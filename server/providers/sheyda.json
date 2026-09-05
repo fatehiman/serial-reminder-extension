@@ -1,0 +1,146 @@
+{
+  "name": "sheyda",
+  "label": "Sheyda",
+  "version": 1,
+  "enabled": true,
+  "homepage": "https://www.sheyda.com/",
+
+  "_comment": [
+    "Sheyda is a single page app backed by GraphQL at https://api.sheyda.com/query.",
+    "Its class names are generated, so the DOM is not worth reading.",
+    "",
+    "The gateway wants two headers and nothing else:",
+    "  did         any stable device id string (it is not checked against anything)",
+    "  x-source-p  202314, the web client id",
+    "",
+    "The catalog queries (getProgramByUid, getSeasonEpisodes) work with just those",
+    "two, so the hourly check needs no login. Only getEpisodeByUid demands the",
+    "user's JWT, and we avoid it: getEpisodePageByUid returns the same episode",
+    "plus its program and is public.",
+    "",
+    "Two things to know about the data:",
+    "  - 'order' is the position in the season list, NOT the episode number. A",
+    "    season may open with a special, so order 7 is 'قسمت ۶'. The real number",
+    "    is the digits in 'title'; a special has none and is dropped.",
+    "  - seasons are named in words ('فصل اول'), hence the season map below."
+  ],
+
+  "matches": ["*://www.sheyda.com/*", "*://sheyda.com/*"],
+
+  "_seasonMap": "Persian ordinals, first to twelfth.",
+
+  "watch": {
+    "urlPattern": "^https?://(?:www\\.)?sheyda\\.com/w/([A-Za-z0-9_-]+)",
+    "urlFields": ["episodeKey"],
+
+    "video": { "selector": "video" },
+
+    "enrich": {
+      "url": "https://api.sheyda.com/query",
+      "method": "POST",
+      "cacheSeconds": 21600,
+      "headers": {
+        "did": "serial-reminder-web-0000000000000000000000000000",
+        "x-source-p": "202314"
+      },
+      "body": {
+        "operationName": "srEpisodePage",
+        "variables": { "uid": "{episodeKey}" },
+        "query": "query srEpisodePage($uid: String!) { getEpisodePageByUid(uid: $uid) { status { statusCode } data { episode { uid title order duration seasonID programID releaseStatus } program { program { id uid title titleEnglish portraitImagePath } } } } }"
+      },
+      "requireTruthy": "data.getEpisodePageByUid.data.episode.programID",
+      "fields": {
+        "seriesKey":    { "path": "data.getEpisodePageByUid.data.program.program.uid", "as": "string" },
+        "seriesTitle":  "data.getEpisodePageByUid.data.program.program.title",
+        "seriesUrl":    "https://www.sheyda.com/p/{data.getEpisodePageByUid.data.program.program.uid}",
+        "poster":       "data.getEpisodePageByUid.data.program.program.portraitImagePath",
+        "episode":      { "path": "data.getEpisodePageByUid.data.episode.title", "as": "int" },
+        "episodeTitle": "data.getEpisodePageByUid.data.episode.title",
+        "episodeUrl":   "https://www.sheyda.com/w/{data.getEpisodePageByUid.data.episode.uid}",
+        "duration":     { "path": "data.getEpisodePageByUid.data.episode.duration", "as": "int" },
+        "season": {
+          "template": "{title}",
+          "as": "int",
+          "default": 1,
+          "map": {
+            "فصل اول": 1, "فصل دوم": 2, "فصل سوم": 3, "فصل چهارم": 4,
+            "فصل پنجم": 5, "فصل ششم": 6, "فصل هفتم": 7, "فصل هشتم": 8,
+            "فصل نهم": 9, "فصل دهم": 10, "فصل یازدهم": 11, "فصل دوازدهم": 12
+          }
+        }
+      }
+    },
+
+    "fallback": {
+      "source": "document.title",
+      "pattern": "^پخش\\s+قسمت\\s+([0-9۰-۹]+)\\s+(.+?)\\s+-\\s+",
+      "fields": ["episode", "seriesTitle"],
+      "seriesKeyFrom": "seriesTitle",
+      "episodeUrl": "{url}"
+    }
+  },
+
+  "catalog": {
+    "refKeyFrom": "seriesKey",
+    "maxRequests": 14,
+    "headers": {
+      "did": "serial-reminder-web-0000000000000000000000000000",
+      "x-source-p": "202314",
+      "Referer": "https://www.sheyda.com/"
+    },
+
+    "steps": [
+      {
+        "id": "seasons",
+        "url": "https://api.sheyda.com/query",
+        "method": "POST",
+        "type": "json",
+        "body": {
+          "operationName": "srProgram",
+          "variables": { "uid": "{refKey}" },
+          "query": "query srProgram($uid: String!) { getProgramByUid(uid: $uid) { status { statusCode } data { program { id uid title } seasons { id title } } } }"
+        },
+        "list": "data.getProgramByUid.data.seasons",
+        "fields": {
+          "seasonId": { "path": "id", "as": "string" },
+          "season": {
+            "path": "title",
+            "as": "int",
+            "default": 1,
+            "map": {
+              "فصل اول": 1, "فصل دوم": 2, "فصل سوم": 3, "فصل چهارم": 4,
+              "فصل پنجم": 5, "فصل ششم": 6, "فصل هفتم": 7, "فصل هشتم": 8,
+              "فصل نهم": 9, "فصل دهم": 10, "فصل یازدهم": 11, "فصل دوازدهم": 12
+            }
+          }
+        },
+        "skipWhen": [{ "path": "id", "empty": true }]
+      },
+      {
+        "id": "episodes",
+        "forEach": "seasons",
+        "url": "https://api.sheyda.com/query",
+        "method": "POST",
+        "type": "json",
+        "emit": true,
+        "body": {
+          "operationName": "srSeasonEpisodes",
+          "variables": { "seasonID": "{item.seasonId}" },
+          "query": "query srSeasonEpisodes($seasonID: String!) { getSeasonEpisodes(seasonID: $seasonID) { status { statusCode } data { uid title order duration releaseStatus releaseDate } } }"
+        },
+        "list": "data.getSeasonEpisodes.data",
+        "fields": {
+          "number":     { "path": "title", "as": "int" },
+          "title":      "title",
+          "url":        "https://www.sheyda.com/w/{uid}",
+          "duration":   { "path": "duration", "as": "int" },
+          "releasedAt": "releaseDate"
+        },
+        "skipWhen": [
+          { "path": "releaseStatus", "ne": "RELEASED" },
+          { "path": "uid", "empty": true }
+        ]
+      }
+    ]
+  }
+}

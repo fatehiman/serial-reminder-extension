@@ -37,6 +37,9 @@ namespace SR;
  * "type": "html" instead of "json" switches the row source to a regex
  * ("list" becomes the pattern, "fields" map to named capture groups).
  *
+ * A json step may set "method": "POST" plus a "body" object, which is how a
+ * GraphQL API is asked. Placeholders inside the body are filled in as well.
+ *
  * Only steps with "emit": true contribute episodes to the result.
  */
 final class Catalog
@@ -100,7 +103,15 @@ final class Catalog
                 $type = (string) ($step['type'] ?? 'json');
 
                 if ($type === 'json') {
-                    $body = Http::getJson($url, $stepHeaders);
+                    // A step can POST instead, which is how GraphQL APIs are asked.
+                    $method = strtoupper((string) ($step['method'] ?? 'GET'));
+                    $body   = $method === 'POST'
+                        ? Http::postJson(
+                            $url,
+                            (array) Val::templateDeep((array) ($step['body'] ?? []), $vars + $ctx),
+                            $stepHeaders
+                        )
+                        : Http::getJson($url, $stepHeaders);
                     if ($body === null) {
                         return [
                             'episodes' => self::finish($episodes),
@@ -180,6 +191,9 @@ final class Catalog
                 return true;
             }
             if (array_key_exists('eq', $cond) && (string) $v === (string) $cond['eq']) {
+                return true;
+            }
+            if (array_key_exists('ne', $cond) && (string) $v !== (string) $cond['ne']) {
                 return true;
             }
             if (array_key_exists('gt', $cond)) {

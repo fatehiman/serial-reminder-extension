@@ -105,8 +105,9 @@ switch ($command) {
         $verbose  = !isset($flags['quiet']);
         $t0    = microtime(true);
         $stats = Checker::runAll($serialId, $minAge, $verbose);
-        out(sprintf('checked=%d added=%d errors=%d in %.1fs',
-            $stats['checked'], $stats['added'], $stats['errors'], microtime(true) - $t0));
+        out(sprintf('checked=%d added=%d errors=%d pruned=%d in %.1fs',
+            $stats['checked'], $stats['added'], $stats['errors'],
+            $stats['pruned'] ?? 0, microtime(true) - $t0));
         exit($stats['errors'] > 0 ? 1 : 0);
 
     case 'serials':

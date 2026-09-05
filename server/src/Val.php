@@ -93,6 +93,49 @@ final class Val
         );
     }
 
+    /**
+     * Turn words into values: {"season one": 1, "season two": 2}.
+     * Tries an exact match first, then looks for a key inside the text, longest
+     * key first so "chapter twelve" never matches a "chapter two" key.
+     * Persian and Arabic digits are folded before comparing.
+     */
+    public static function applyMap(string $value, array $map): mixed
+    {
+        $needle = trim(self::digits($value));
+
+        foreach ($map as $key => $out) {
+            if (trim(self::digits((string) $key)) === $needle) {
+                return $out;
+            }
+        }
+
+        $keys = array_keys($map);
+        usort($keys, static fn ($a, $b) => mb_strlen((string) $b) <=> mb_strlen((string) $a));
+        foreach ($keys as $key) {
+            $k = trim(self::digits((string) $key));
+            if ($k !== '' && mb_strpos($needle, $k) !== false) {
+                return $map[$key];
+            }
+        }
+        return null;
+    }
+
+    /** Fill "{...}" placeholders everywhere inside a nested array (a POST body). */
+    public static function templateDeep(mixed $data, array $vars): mixed
+    {
+        if (is_string($data)) {
+            return self::template($data, $vars);
+        }
+        if (is_array($data)) {
+            $out = [];
+            foreach ($data as $k => $v) {
+                $out[is_string($k) ? self::template($k, $vars) : $k] = self::templateDeep($v, $vars);
+            }
+            return $out;
+        }
+        return $data;
+    }
+
     /** True when a template still has an unresolved placeholder. */
     public static function hasHoles(string $s): bool
     {
@@ -106,9 +149,11 @@ final class Val
      */
     public static function field(mixed $rule, array $item, array $extraVars = []): mixed
     {
-        $as = null;
+        $as  = null;
+        $map = null;
         if (is_array($rule)) {
             $as      = $rule['as']      ?? null;
+            $map     = $rule['map']     ?? null;
             $default = $rule['default'] ?? null;
             $spec    = $rule['path']    ?? $rule['template'] ?? null;
             if ($spec === null) {
@@ -129,6 +174,14 @@ final class Val
 
         if ($value === null || $value === '') {
             return $default;
+        }
+
+        if (is_array($map) && is_scalar($value)) {
+            $mapped = self::applyMap((string) $value, $map);
+            if ($mapped === null) {
+                return $default;
+            }
+            $value = $mapped;
         }
 
         return match ($as) {

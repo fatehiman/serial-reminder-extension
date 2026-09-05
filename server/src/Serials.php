@@ -35,24 +35,13 @@ final class Serials
         }
         $season = Val::int($in['season'] ?? null) ?? 1;
 
-        $wasKnown = Db::one(
-            'SELECT id FROM serials WHERE user_id = ? AND provider = ? AND provider_key = ?',
-            [$userId, $provider, $seriesKey]
-        ) !== null;
-
         $serial  = self::upsertSerial($userId, $provider, $seriesKey, [
             'title'      => $title,
             'series_url' => $in['seriesUrl'] ?? null,
             'poster_url' => $in['poster'] ?? null,
         ]);
-        $serialId = (int) $serial['id'];
-
-        // First time we see this show: nobody starts a serial at episode 22, so
-        // treat everything before this point as already watched.
-        if (!$wasKnown) {
-            Db::q('UPDATE serials SET backfill_season = ?, backfill_number = ? WHERE id = ?',
-                [$season, $episode, $serialId]);
-        }
+        $serialId  = (int) $serial['id'];
+        $wasFollowed = (int) ($serial['confirmed'] ?? 0) === 1;
 
         $existing = Db::one(
             'SELECT * FROM episodes WHERE serial_id = ? AND season = ? AND number = ?',
@@ -105,7 +94,21 @@ final class Serials
         $wasWatched    = (int) ($existing['watched'] ?? 0) === 1;
         $row           = Db::one('SELECT * FROM episodes WHERE id = ?', [$episodeId]) ?? [];
         $ended         = !empty($in['ended']);
-        $justCompleted = self::applyWatchedRule($row, $ended) && !$wasWatched;
+        $isWatched     = self::applyWatchedRule($row, $ended);
+        $justCompleted = $isWatched && !$wasWatched;
+
+        // The show joins the list only now, the first time an episode really
+        // counted as watched. Opening a page and sampling a minute does nothing.
+        $justFollowed = false;
+        if ($isWatched && !$wasFollowed) {
+            Db::q(
+                'UPDATE serials SET confirmed = 1, backfill_season = ?, backfill_number = ? WHERE id = ?',
+                [$season, $episode, $serialId]
+            );
+            // Nobody starts a serial at episode 22: treat the earlier ones as seen.
+            self::markWatchedUpTo($serialId, $season, $episode);
+            $justFollowed = true;
+        }
 
         Db::q(
             "UPDATE serials SET last_watched_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
@@ -118,13 +121,14 @@ final class Serials
             'episode'       => Db::one('SELECT * FROM episodes WHERE id = ?', [$episodeId]) ?? [],
             'created'       => $created,
             'justCompleted' => $justCompleted,
-            'newSerial'     => !$wasKnown,
+            'newSerial'     => $justFollowed,
         ];
     }
 
     /**
-     * The rule the user asked for: 20 minutes of real playback counts as watched,
-     * and reaching (nearly) the end of the episode counts too.
+     * Is this episode finished? 70% of the player counts, because people skip
+     * ads, recaps and credits. When the length is unknown, 20 minutes of real
+     * playing time counts instead. All three numbers live in config.php.
      */
     private static function applyWatchedRule(array $ep, bool $ended): bool
     {
@@ -136,9 +140,9 @@ final class Serials
         $watched  = (int) ($ep['watched_seconds'] ?? 0);
 
         $rules     = (array) Config::get('watched_rules', []);
-        $minRatio  = (float) ($rules['min_ratio'] ?? 0.90);
+        $minRatio  = (float) ($rules['min_ratio'] ?? 0.70);
         $minSecs   = (int)   ($rules['min_seconds'] ?? 1200);
-        $ratioOfD  = (float) ($rules['ratio_of_duration'] ?? 0.85);
+        $ratioOfD  = (float) ($rules['ratio_of_duration'] ?? 0.70);
 
         $ratio = $duration > 0 ? min(1.0, $position / $duration) : 0.0;
 
@@ -245,9 +249,11 @@ final class Serials
             [$userId, $provider, $key]
         );
         if ($row === null) {
+            // Unconfirmed: it stays out of the list until an episode is really
+            // watched. See migration 003 and confirmIfWatched().
             Db::q(
-                'INSERT INTO serials (user_id, provider, provider_key, title, series_url, poster_url)
-                 VALUES (?, ?, ?, ?, ?, ?)',
+                'INSERT INTO serials (user_id, provider, provider_key, title, series_url, poster_url, confirmed)
+                 VALUES (?, ?, ?, ?, ?, ?, 0)',
                 [
                     $userId, $provider, $key,
                     (string) $data['title'],
@@ -280,7 +286,7 @@ final class Serials
      */
     public static function listForUser(int $userId, ?string $status = null): array
     {
-        $sql    = 'SELECT * FROM serials WHERE user_id = ?';
+        $sql    = 'SELECT * FROM serials WHERE user_id = ? AND confirmed = 1';
         $params = [$userId];
         if ($status !== null && $status !== 'all') {
             $sql .= ' AND status = ?';

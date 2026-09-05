@@ -14,7 +14,9 @@ final class Checker
     {
         $providers = Providers::all();
 
-        $sql    = 'SELECT * FROM serials WHERE status != ?';
+        // confirmed = 0 means the show was opened but never really watched, so
+        // there is nothing to keep up to date. See migration 003.
+        $sql    = 'SELECT * FROM serials WHERE confirmed = 1 AND status != ?';
         $params = ['finished'];
         if ($onlySerialId !== null) {
             $sql    = 'SELECT * FROM serials WHERE id = ?';
@@ -23,7 +25,11 @@ final class Checker
             $sql .= " AND (last_checked_at IS NULL OR last_checked_at < datetime('now', '-$minAgeMinutes minutes'))";
         }
 
-        $stats = ['checked' => 0, 'added' => 0, 'errors' => 0, 'details' => []];
+        $stats = ['checked' => 0, 'added' => 0, 'errors' => 0, 'pruned' => 0, 'details' => []];
+
+        if ($onlySerialId === null) {
+            $stats['pruned'] = self::pruneCandidates();
+        }
 
         foreach (Db::all($sql, $params) as $serial) {
             $result = self::checkOne($serial, $providers);
@@ -45,6 +51,21 @@ final class Checker
         }
 
         return $stats;
+    }
+
+    /**
+     * Throw away shows that were opened once, never watched, and never came back.
+     * Without this every page you glance at leaves a row behind forever.
+     */
+    public static function pruneCandidates(int $olderThanDays = 30): int
+    {
+        return Db::q(
+            "DELETE FROM serials
+             WHERE confirmed = 0
+               AND updated_at < datetime('now', ?)
+               AND id NOT IN (SELECT serial_id FROM episodes WHERE watched = 1)",
+            ["-$olderThanDays days"]
+        )->rowCount();
     }
 
     /** @return array{serialId:int, title:string, added:int, error:?string} */

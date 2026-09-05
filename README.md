@@ -31,8 +31,13 @@ and every Chrome profile you use.
 - **Remembers your place.** While an episode plays, the extension counts the real
   playing time and the player position and sends it to the server.
 - **Decides when an episode is finished.** An episode counts as watched when the
-  player reaches ~90% of it, or when it played for 20 minutes and the length is
-  unknown. Both rules are in `config.php`, so you can change them.
+  player reaches **70%** of it, or when it played for **20 minutes** and the
+  length is unknown. 70%, not more, because people skip ads, the recap at the
+  start and the credits at the end. Both numbers are in `config.php`.
+- **Only follows shows you really watch.** Opening a page and sampling a minute
+  does **not** add it to your list. A show joins the list the first time one of
+  its episodes passes the rule above. Until then the progress is still counted,
+  quietly, so watching 15 minutes today and 15 tomorrow still adds up.
 - **Finds new episodes by itself.** Every hour the server asks each show's site
   which episodes exist and marks the ones you have not seen.
 - **One dashboard for every computer.** All data lives on the server. Open
@@ -59,8 +64,17 @@ These files are **data, not code** — URL patterns, JSON paths, CSS selectors a
 regular expressions. The extension never runs downloaded JavaScript, so a
 provider file cannot do anything else to your browser.
 
-See [`docs/PROVIDERS.md`](docs/PROVIDERS.md) for the format, and
-[`server/providers/filimo.json`](server/providers/filimo.json) for a real one.
+See [`docs/PROVIDERS.md`](docs/PROVIDERS.md) for the format. Two real ones ship
+with it:
+
+| File | Site | How it reads the show |
+|---|---|---|
+| [`filimo.json`](server/providers/filimo.json) | filimo.com | its public REST catalog API |
+| [`sheyda.json`](server/providers/sheyda.json) | sheyda.com | its GraphQL API |
+
+Neither needs a login **on the server**: the hourly check only uses the parts of
+each site's API that are public. Your own browser session is used only in the
+browser.
 
 ## Repository layout
 

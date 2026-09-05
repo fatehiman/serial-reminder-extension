@@ -27,10 +27,16 @@ return [
         'insecure_ssl' => false,
     ],
 
-    // An episode counts as watched when either rule matches.
+    // An episode counts as watched when any of these matches. Reaching this also
+    // makes the show join your list — a page you only sampled never shows up.
     'watched_rules' => [
-        'min_ratio'   => 0.90,  // player reached 90% of the episode
-        'min_seconds' => 1200,  // or it played for 20 minutes (duration unknown)
-        'ratio_of_duration' => 0.85, // or watched time >= 85% of duration
+        // Player reached 70% of the episode. Not higher: people skip the ads,
+        // the recap at the start and the credits at the end.
+        'min_ratio'   => 0.70,
+        // Or it simply played for 20 minutes, when the length is unknown.
+        'min_seconds' => 1200,
+        // Or the real playing time adds up to 70% of the length, for players
+        // whose reported position cannot be trusted.
+        'ratio_of_duration' => 0.70,
     ],
 ];
