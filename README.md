@@ -46,7 +46,19 @@ and every Chrome profile you use.
 
 All of these numbers live in `config.php`.
 - **Finds new episodes by itself.** Every hour the server asks each show's site
-  which episodes exist and marks the ones you have not seen.
+  which episodes exist and marks the ones you have not seen. Episodes the site
+  lists with a countdown, before they are published, are **not** counted — each
+  provider file filters them, and the server drops anything with a release date
+  in the future as a second guard.
+- **Says how many episodes you have not seen**, not how many are new. The badge
+  on the poster reads `3 unseen` when three published episodes are waiting,
+  whether they appeared today or a year ago.
+- **Shows the real playing time on the poster.** The number at the bottom right,
+  `MM:SS`, is how long the extension actually saw the episode on the card play —
+  the one you are told to watch next, or the last one you finished. `00:15` next
+  to a 65-minute episode means it was opened and closed; `00:00` means the
+  extension never saw it at all, so it was watched on a computer where the
+  extension was not running.
 - **One dashboard for every computer.** All data lives on the server. Open
   `https://your-server/dashboard` anywhere — the extension is only needed on the
   computers where you actually watch.

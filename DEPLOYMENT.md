@@ -309,6 +309,8 @@ Never copy a live WAL database with `cp` — use `.backup`, which is consistent.
 | Namava alone finds nothing, no error | The relay is down or its key changed, or namava's own API moved. Section 13 has the two commands that tell those apart. |
 | Every show suddenly shows new episodes | A provider's `skipWhen` no longer filters "coming soon" entries. |
 | Extension reaches the server but never posts a watch | The tracker is not in that tab. Check `grep "POST /api/watch" logs/access_log`. Reload the extension; reload the page if it persists. |
+| An episode you watched is still "unseen", play time `00:00` | The server was never told. Nothing was posted for it — check `grep "POST /api/watch" logs/access_log` around that evening. The usual cause is the extension not running on the computer you watched on. |
+| Chrome dropped the unpacked extension after a restart | An unpacked extension is only remembered by its folder path. Chrome silently removes it when that folder is gone at startup — a second drive that mounts late, a network or removable drive, a renamed folder — and enterprise policy (`ExtensionInstallBlocklist`) removes it too. Keep `extension/` on the system drive under the user's own home, load it again, then restart Chrome once and confirm it survived. `chrome://policy` shows a policy if one is at fault. |
 | A show never appears on the dashboard | It needs 20 minutes of real playing, or a finished episode. Look for it with `SELECT * FROM serials WHERE confirmed = 0`. |
 | Wrong season on one provider | Something in that provider reads `document.title`. In a single page app the title lags the URL — take the value from the API. |
 | Apache logs | `tail -20 /var/log/apache2/error.log`, and this domain's own logs in `$D/logs/` |

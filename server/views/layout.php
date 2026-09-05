@@ -11,7 +11,7 @@ $pageTitle   = $pageTitle ?? 'Serial Reminder';
 <meta name="robots" content="noindex, nofollow">
 <title><?= e($pageTitle) ?></title>
 <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/app.css?v=3">
+<link rel="stylesheet" href="/assets/app.css?v=4">
 </head>
 <body>
 <header class="topbar">

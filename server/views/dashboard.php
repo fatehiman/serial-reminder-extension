@@ -43,7 +43,22 @@ $newCount  = count(array_filter($serials, static fn ($s) => $s['hasNew']));
           <span class="poster-fallback"><?= e(mb_substr($s['title'], 0, 1)) ?></span>
         <?php endif; ?>
         <?php if ($s['unwatchedCount'] > 0): ?>
-          <span class="badge"><?= (int) $s['unwatchedCount'] ?> new</span>
+          <span class="badge" title="<?= (int) $s['unwatchedCount'] ?> episode<?= $s['unwatchedCount'] === 1 ? '' : 's' ?> published on <?= e($s['provider']) ?> that you have not seen yet. Episodes the site has not published are not counted.">
+            <?= (int) $s['unwatchedCount'] ?> unseen</span>
+        <?php endif; ?>
+
+        <?php
+        // How long the episode on this card really played. Zero means the
+        // extension never saw it — watched somewhere else, or not running.
+        $shown = $next ?: $last;
+        if ($shown):
+            $tip = 'Played ' . sr_mmss($shown['watchedSeconds']) . ' of ' . $shown['label'];
+            if ($shown['duration']) {
+                $tip .= ', which is ' . sr_mmss($shown['duration']) . ' long';
+            }
+            $tip .= '. Player stopped at ' . sr_mmss($shown['position']) . '.';
+        ?>
+          <span class="playtime" title="<?= e($tip) ?>"><?= e(sr_mmss($shown['watchedSeconds'])) ?></span>
         <?php endif; ?>
       </div>
 

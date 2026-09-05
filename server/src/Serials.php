@@ -203,6 +203,17 @@ final class Serials
             if ($number === null) {
                 continue;
             }
+            // Every site lists an episode before it airs, with a countdown on
+            // its page, and every provider file filters those itself. This is
+            // the safety net: one missed filter would put an episode nobody can
+            // watch in the unseen count, and the show would look new forever.
+            $releasedAt = self::str($ep['releasedAt'] ?? null);
+            if ($releasedAt !== null) {
+                $ts = Val::time($releasedAt);
+                if ($ts !== null && $ts > time()) {
+                    continue;
+                }
+            }
             $exists = Db::one(
                 'SELECT id FROM episodes WHERE serial_id = ? AND season = ? AND number = ?',
                 [$serialId, $season, $number]

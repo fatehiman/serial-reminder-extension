@@ -30,6 +30,18 @@ function e(?string $s): string
     return htmlspecialchars((string) $s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
+/**
+ * Seconds as MM:SS, with the minutes never wrapping into hours: 34:23, 120:37.
+ * Whole minutes are what tells you "did I really watch this episode", and an
+ * episode is one or two hours at most, so hours would only make it harder to
+ * compare with the episode length.
+ */
+function sr_mmss(?int $seconds): string
+{
+    $s = max(0, (int) $seconds);
+    return sprintf('%02d:%02d', intdiv($s, 60), $s % 60);
+}
+
 /** Human "3 hours ago" style, in plain words. */
 function sr_ago(?string $utc): string
 {

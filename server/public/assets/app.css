@@ -114,6 +114,15 @@ a { color: inherit; }
   padding: 3px 8px; border-radius: 999px; letter-spacing: .02em;
 }
 
+/* How long the episode on this card really played. It sits on the poster, so
+   the black glow is what keeps it readable on a white image. */
+.playtime {
+  position: absolute; bottom: 8px; inset-inline-end: 8px;
+  color: #fff; font-size: 12.5px; font-weight: 700; letter-spacing: .03em;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 3px #000, 0 0 6px #000, 0 1px 2px rgba(0, 0, 0, .9);
+}
+
 .card-body { padding: 12px 14px 4px; }
 .card-body h3 {
   margin: 0 0 2px; font-size: 15.5px; line-height: 1.3;
