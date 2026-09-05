@@ -97,9 +97,10 @@ switch (true) {
         $user    = Auth::requireWebUser();
         $status  = (string) ($_GET['status'] ?? 'watching');
         render('dashboard', [
-            'user'    => $user,
-            'status'  => $status,
-            'serials' => Serials::listForUser((int) $user['id'], $status),
+            'user'     => $user,
+            'status'   => $status,
+            'serials'  => Serials::listForUser((int) $user['id'], $status),
+            'accounts' => SR\Accounts::forUser((int) $user['id']),
         ]);
         exit;
 

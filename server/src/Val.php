@@ -120,6 +120,81 @@ final class Val
         return null;
     }
 
+    /** "01:05:39" or "56:27" or "3600" -> seconds. */
+    public static function duration(string $v): ?int
+    {
+        $v = trim(self::digits($v));
+        if (preg_match('/^(?:(\d+):)?(\d{1,2}):(\d{2})$/', $v, $m)) {
+            return ((int) ($m[1] ?: 0)) * 3600 + ((int) $m[2]) * 60 + (int) $m[3];
+        }
+        return self::int($v);
+    }
+
+    /**
+     * Show an Iranian mobile number the way people write it: 989133169571 and
+     * +98 913 316 9571 both become 09133169571. Anything else is left alone.
+     */
+    public static function phone(string $v): string
+    {
+        $d = preg_replace('/\D+/', '', self::digits($v)) ?? '';
+        if ($d === '') {
+            return trim($v);
+        }
+        if (str_starts_with($d, '98') && strlen($d) === 12) {
+            return '0' . substr($d, 2);
+        }
+        if (strlen($d) === 10 && $d[0] === '9') {
+            return '0' . $d;
+        }
+        return $d;
+    }
+
+    /**
+     * First row of $rows where every $match key equals its (templated) value.
+     * Lets a field say "the season whose id is the one this episode belongs to".
+     */
+    public static function findIn(array $rows, array $match, array $vars): ?array
+    {
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $ok = true;
+            foreach ($match as $path => $wanted) {
+                $want = is_string($wanted) && str_contains($wanted, '{')
+                    ? self::template($wanted, $vars)
+                    : $wanted;
+                if ((string) self::path($row, (string) $path) !== (string) $want) {
+                    $ok = false;
+                    break;
+                }
+            }
+            if ($ok) {
+                return $row;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Flatten a list of lists into one list. Stops at objects, so a list of
+     * episode objects is left alone but seasons-of-episodes is unwrapped.
+     */
+    public static function flattenList(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            if (is_array($row) && $row !== [] && array_is_list($row)) {
+                foreach (self::flattenList($row) as $inner) {
+                    $out[] = $inner;
+                }
+            } else {
+                $out[] = $row;
+            }
+        }
+        return $out;
+    }
+
     /** Fill "{...}" placeholders everywhere inside a nested array (a POST body). */
     public static function templateDeep(mixed $data, array $vars): mixed
     {
@@ -149,11 +224,15 @@ final class Val
      */
     public static function field(mixed $rule, array $item, array $extraVars = []): mixed
     {
-        $as  = null;
-        $map = null;
+        $as   = null;
+        $map  = null;
+        $find = null;
+        $pick = null;
         if (is_array($rule)) {
             $as      = $rule['as']      ?? null;
             $map     = $rule['map']     ?? null;
+            $find    = $rule['find']    ?? null;
+            $pick    = $rule['pick']    ?? null;
             $default = $rule['default'] ?? null;
             $spec    = $rule['path']    ?? $rule['template'] ?? null;
             if ($spec === null) {
@@ -172,6 +251,17 @@ final class Val
             ? self::template($rule, $vars)
             : self::path($vars, $rule, $default);
 
+        // "find the row in this list whose id matches, then take that field"
+        if (is_array($find)) {
+            $value = self::findIn(is_array($value) ? $value : [], $find, $vars);
+            if ($value === null) {
+                return $default;
+            }
+            if (is_string($pick)) {
+                $value = self::path($value, $pick);
+            }
+        }
+
         if ($value === null || $value === '') {
             return $default;
         }
@@ -185,11 +275,13 @@ final class Val
         }
 
         return match ($as) {
-            'int'    => self::int($value),
-            'float'  => is_numeric(self::digits((string) $value)) ? (float) self::digits((string) $value) : null,
-            'bool'   => (bool) $value,
-            'string' => is_scalar($value) ? (string) $value : null,
-            default  => $value,
+            'int'      => self::int($value),
+            'float'    => is_numeric(self::digits((string) $value)) ? (float) self::digits((string) $value) : null,
+            'bool'     => (bool) $value,
+            'string'   => is_scalar($value) ? (string) $value : null,
+            'duration' => self::duration((string) $value),
+            'phone'    => self::phone((string) $value),
+            default    => $value,
         };
     }
 }

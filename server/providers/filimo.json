@@ -1,7 +1,7 @@
 {
   "name": "filimo",
   "label": "Filimo",
-  "version": 3,
+  "version": 4,
   "enabled": true,
   "homepage": "https://www.filimo.com/",
 
@@ -51,6 +51,17 @@
       "fields": ["seriesTitle", "season", "episode", "episodeTitle"],
       "seriesKeyFrom": "seriesTitle",
       "episodeUrl": "{url}"
+    }
+  },
+
+  "account": {
+    "_comment": "Same origin, so the login cookie goes with it. data.user.mobile is the number the account is registered to.",
+    "refreshHours": 20,
+    "source": "url",
+    "url": "https://www.filimo.com/api/fa/v1/web/config/uxEvent",
+    "fields": {
+      "label": { "path": "data.user.mobile", "as": "phone" },
+      "name":  "data.user.name"
     }
   },
 

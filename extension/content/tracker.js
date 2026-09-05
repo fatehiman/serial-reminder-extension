@@ -92,20 +92,48 @@
     return null;
   }
 
-  /** A field rule: a dot path, a "{...}" template, or {path, as, map, default}. */
+  /**
+   * First row of `rows` where every `match` key equals its (templated) value.
+   * Lets a field say "the season whose id is the one this episode belongs to".
+   */
+  function findIn(rows, match, vars) {
+    for (const row of rows || []) {
+      if (!row || typeof row !== 'object') continue;
+      let ok = true;
+      for (const [p, wanted] of Object.entries(match)) {
+        const want = typeof wanted === 'string' && wanted.includes('{') ? template(wanted, vars) : wanted;
+        if (String(path(row, p)) !== String(want)) { ok = false; break; }
+      }
+      if (ok) return row;
+    }
+    return null;
+  }
+
+  /** A field rule: a dot path, a "{...}" template, or {path, as, map, find, default}. */
   function field(rule, vars) {
     let as = null;
     let map = null;
+    let find = null;
+    let pick = null;
     let def;
     if (rule && typeof rule === 'object') {
       as = rule.as || null;
       map = rule.map || null;
+      find = rule.find || null;
+      pick = rule.pick || null;
       def = rule.default;
       rule = rule.path != null ? rule.path : rule.template;
     }
     if (typeof rule !== 'string') return def;
 
     let value = rule.includes('{') ? template(rule, vars) : path(vars, rule);
+
+    if (find) {
+      value = findIn(Array.isArray(value) ? value : [], find, vars);
+      if (value == null) return def;
+      if (typeof pick === 'string') value = path(value, pick);
+    }
+
     if (value == null || value === '') return def;
 
     if (map && (typeof value === 'string' || typeof value === 'number')) {
@@ -118,7 +146,29 @@
     if (as === 'float') { const n = parseFloat(digits(value)); return Number.isFinite(n) ? n : def; }
     if (as === 'bool') return Boolean(value);
     if (as === 'string') return String(value);
+    if (as === 'duration') return toDuration(value);
+    if (as === 'phone') return toPhone(value);
     return value;
+  }
+
+  /** "01:05:39" or "56:27" or "3600" -> seconds. */
+  function toDuration(v) {
+    const t = digits(String(v)).trim();
+    const m = /^(?:(\d+):)?(\d{1,2}):(\d{2})$/.exec(t);
+    if (m) return (Number(m[1] || 0) * 3600) + (Number(m[2]) * 60) + Number(m[3]);
+    return toInt(t);
+  }
+
+  /**
+   * Show an Iranian mobile the way people write it: 989133169571 and
+   * +98 913 316 9571 both become 09133169571.
+   */
+  function toPhone(v) {
+    const d = digits(String(v)).replace(/\D+/g, '');
+    if (!d) return String(v).trim();
+    if (d.length === 12 && d.startsWith('98')) return '0' + d.slice(2);
+    if (d.length === 10 && d[0] === '9') return '0' + d;
+    return d;
   }
 
   /* ------------------------------------------------------------ detection */
@@ -271,6 +321,108 @@
     return out;
   }
 
+  /* -------------------------------------------------------------- account */
+
+  /**
+   * Which account is this site logged in with?
+   *
+   * Every platform signs you up by mobile number, and the subscription may sit
+   * on a different number for each site. Reading it here, while something is
+   * really playing, is proof that this account's subscription works.
+   *
+   * The number is read out of what the site already keeps in the browser, or
+   * from the site's own profile API. Nothing is guessed and nothing is typed.
+   */
+  let accountDone = false;
+
+  function readStore(kind, key) {
+    try {
+      if (kind === 'localStorage') return localStorage.getItem(key);
+      if (kind === 'sessionStorage') return sessionStorage.getItem(key);
+      if (kind === 'cookie') {
+        for (const part of document.cookie.split(';')) {
+          const i = part.indexOf('=');
+          if (part.slice(0, i).trim() === key) return decodeURIComponent(part.slice(i + 1));
+        }
+        return null;
+      }
+    } catch (e) { log('storage read failed', kind, key, e.message); }
+    return null;
+  }
+
+  /** Read a JWT's payload. We are reading our own token for a label, not trusting it. */
+  function decodeJwt(token) {
+    const parts = String(token).split('.');
+    if (parts.length < 2) return null;
+    let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    b64 += '='.repeat((4 - (b64.length % 4)) % 4);
+    try {
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      return JSON.parse(new TextDecoder().decode(bytes));
+    } catch (e) { log('jwt decode failed', e.message); return null; }
+  }
+
+  async function resolveAccount(spec, vars) {
+    let data = null;
+    const source = spec.source || 'url';
+
+    if (source === 'url') {
+      const url = template(spec.url || '', vars);
+      if (!url || hasHoles(url)) return null;
+      const init = {
+        method: (spec.method || 'GET').toUpperCase(),
+        credentials: spec.credentials || 'same-origin',
+        headers: { Accept: 'application/json', ...(spec.headers || {}) },
+      };
+      if (init.method !== 'GET' && spec.body) {
+        init.headers['Content-Type'] = 'application/json';
+        init.body = JSON.stringify(templateDeep(spec.body, vars));
+      }
+      try {
+        const res = await fetch(url, init);
+        if (!res.ok) { log('account HTTP', res.status, url); return null; }
+        data = await res.json();
+      } catch (e) { log('account fetch failed', e.message); return null; }
+    } else {
+      const raw = readStore(source, spec.key || '');
+      if (!raw) return null;
+      const decode = spec.decode || 'json';
+      if (decode === 'jwt') data = decodeJwt(raw);
+      else if (decode === 'none') data = { value: raw };
+      else { try { data = JSON.parse(raw); } catch (e) { log('account json failed', e.message); return null; } }
+      if (!data) return null;
+    }
+
+    const scope = { ...vars, ...data };
+    const out = {};
+    for (const [name, rule] of Object.entries(spec.fields || {})) out[name] = field(rule, scope);
+    if (!out.label) { log('account had no label', out); return null; }
+    return out;
+  }
+
+  /** Once per page, after we know something is really playing. */
+  async function reportAccountOnce() {
+    if (accountDone || !provider || !provider.account || !current) return;
+    accountDone = true;
+
+    const acct = await resolveAccount(provider.account, {
+      url: location.href, title: document.title, host: location.hostname,
+    });
+    if (!acct) return;
+
+    chrome.runtime.sendMessage({
+      type: 'account',
+      account: {
+        provider: provider.name,
+        label: String(acct.label),
+        name: acct.name ? String(acct.name) : null,
+        note: acct.note ? String(acct.note) : null,
+        refreshHours: Number(provider.account.refreshHours) || 20,
+      },
+    }).catch(() => { accountDone = false; });   // service worker asleep: try again
+    log('account', provider.name, acct.label);
+  }
+
   /* --------------------------------------------------------------- player */
 
   function findVideo() {
@@ -304,6 +456,9 @@
 
     if (Number.isFinite(video.duration) && video.duration > 0) current.duration = Math.round(video.duration);
     current.position = Math.round(now);
+
+    // The player is running, so this account really does have a subscription.
+    if (!video.paused && pending > 0) reportAccountOnce();
 
     const nearEnd = current.duration > 0 && now >= current.duration - 30;
     if (video.ended || nearEnd) current.ended = true;
@@ -349,6 +504,7 @@
     current = null;
     pending = 0;
     lastTick = 0;
+    accountDone = false;
 
     if (!provider) return;
     current = await detect();

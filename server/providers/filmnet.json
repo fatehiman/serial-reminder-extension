@@ -1,0 +1,97 @@
+{
+  "name": "filmnet",
+  "label": "Filmnet",
+  "version": 1,
+  "enabled": true,
+  "homepage": "https://filmnet.ir/",
+
+  "_comment": [
+    "Filmnet is a Next.js app with a plain REST API at /api-v2/.",
+    "",
+    "  /api-v2/video-contents/{shortId}   one episode, plus its parent series",
+    "  /api-v2/video-contents/{seriesId}  the series, with seasons -> episodes",
+    "",
+    "Both are public: the player page fetches them with no Authorization header,",
+    "so the hourly check needs no login. Season and episode are already plain",
+    "integers, and every episode carries its own season, so the catalog is a",
+    "single request with the seasons flattened.",
+    "",
+    "Durations look like \"01:05:39\", hence \"as\": \"duration\".",
+    "The player is video.js and only appears about two seconds after the page",
+    "loads, so the default \"video\" selector is right, just not immediately.",
+    "",
+    "The account block reads localStorage instead of calling anything: filmnet",
+    "keeps the whole logged-in user, mobile number included, in lscache-state."
+  ],
+
+  "matches": ["*://filmnet.ir/*", "*://www.filmnet.ir/*"],
+
+  "watch": {
+    "urlPattern": "^https?://(?:www\\.)?filmnet\\.ir/play/([A-Za-z0-9_-]+)",
+    "urlFields": ["episodeKey"],
+
+    "video": { "selector": "video" },
+
+    "enrich": {
+      "url": "https://filmnet.ir/api-v2/video-contents/{episodeKey}",
+      "cacheSeconds": 21600,
+      "requireTruthy": "data.series.id",
+      "fields": {
+        "seriesKey":    { "path": "data.series.id", "as": "string" },
+        "seriesTitle":  "data.series.series_title",
+        "seriesUrl":    "https://filmnet.ir/series/{data.series.series_slug}",
+        "poster":       "data.poster_image.path",
+        "season":       { "path": "data.season", "as": "int", "default": 1 },
+        "episode":      { "path": "data.episode", "as": "int" },
+        "episodeTitle": "data.title",
+        "episodeUrl":   "https://filmnet.ir/play/{data.short_id}/p",
+        "duration":     { "path": "data.duration", "as": "duration" }
+      }
+    },
+
+    "_noFallback": "There is nothing to fall back to. Every page's title is just 'فیلمنت', so a title regex would be pretending to work. If the API above changes, this provider needs fixing, not a fallback."
+  },
+
+  "account": {
+    "refreshHours": 20,
+    "source": "localStorage",
+    "key": "lscache-state",
+    "decode": "json",
+    "fields": {
+      "label": { "path": "user.msisdn", "as": "phone" },
+      "name":  "user.name",
+      "note":  "user.subscription_package_name"
+    }
+  },
+
+  "catalog": {
+    "refKeyFrom": "seriesKey",
+    "maxRequests": 4,
+    "headers": { "Accept": "application/json", "Referer": "https://filmnet.ir/" },
+
+    "steps": [
+      {
+        "id": "episodes",
+        "url": "https://filmnet.ir/api-v2/video-contents/{refKey}",
+        "type": "json",
+        "emit": true,
+        "list": "data.seasons.*.episodes",
+        "flatten": true,
+        "fields": {
+          "number":     { "path": "episode", "as": "int" },
+          "season":     { "path": "season", "as": "int", "default": 1 },
+          "title":      "title",
+          "url":        "https://filmnet.ir/play/{short_id}/p",
+          "duration":   { "path": "duration", "as": "duration" },
+          "releasedAt": "published_at"
+        },
+        "skipWhen": [
+          { "path": "type", "ne": "episode" },
+          { "path": "status", "ne": "active" },
+          { "path": "published_at", "future": true },
+          { "path": "short_id", "empty": true }
+        ]
+      }
+    ]
+  }
+}

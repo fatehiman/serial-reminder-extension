@@ -135,6 +135,40 @@ async function flushQueue() {
   return { sent, left: queue.length };
 }
 
+/* --------------------------------------------------------------- accounts */
+
+/**
+ * Which mobile number each site is logged in with. Sent up when it changes, and
+ * otherwise at most once every refreshHours, so it is a cheap heartbeat rather
+ * than a call on every page.
+ */
+async function recordAccount(acct) {
+  if (!acct || !acct.provider || !acct.label) return;
+
+  const { accountSent = {} } = await chrome.storage.local.get({ accountSent: {} });
+  const previous = accountSent[acct.provider];
+  const hours = Number(acct.refreshHours) || 20;
+  const fresh = previous
+    && previous.label === acct.label
+    && Date.now() - (previous.at || 0) < hours * 3600 * 1000;
+
+  if (fresh) return;
+
+  try {
+    await api.account({
+      provider: acct.provider,
+      label: acct.label,
+      name: acct.name || null,
+      note: acct.note || null,
+    });
+    accountSent[acct.provider] = { label: acct.label, at: Date.now() };
+    await chrome.storage.local.set({ accountSent });
+    await setStatus({ lastError: null });
+  } catch (e) {
+    await setStatus({ lastError: e.message });
+  }
+}
+
 /* ------------------------------------------------------------------ status */
 
 async function setStatus(patch) {
@@ -173,6 +207,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       case 'report':
         await enqueue(msg.report);
+        sendResponse({ ok: true });
+        break;
+      case 'account':
+        await recordAccount(msg.account);
         sendResponse({ ok: true });
         break;
       case 'open-dashboard':
@@ -219,5 +257,8 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 // Changing the key or the URL means a different account or server: start fresh.
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && (changes.apiKey || changes.apiUrl)) refreshProviders();
+  if (area === 'sync' && (changes.apiKey || changes.apiUrl)) {
+    chrome.storage.local.remove('accountSent');
+    refreshProviders();
+  }
 });

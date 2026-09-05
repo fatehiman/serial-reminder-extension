@@ -207,3 +207,13 @@ select.mini { padding: 5px 6px; }
 .empty { text-align: center; padding: 60px 20px; color: var(--ink-soft); }
 .empty h2 { color: var(--ink); margin: 0 0 8px; }
 .empty p { max-width: 460px; margin: 0 auto 14px; }
+
+/* The mobile number the site is logged in with, shown next to the provider.
+   Every platform signs you up by phone number and it is easy to end up on the
+   one without a subscription. */
+.acct {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
+  opacity: .85;
+  cursor: help;
+}

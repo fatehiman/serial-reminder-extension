@@ -112,6 +112,28 @@ the site's own domain carries your login. Set `"credentials": "include"` only if
 a cross-origin API really needs the cookie — and test it, because some gateways
 answer 504 to a cross-origin request that carries credentials (sheyda's does).
 
+### Picking a row out of a list
+
+`find` searches a list and `pick` takes one field out of the row it found. Use it
+whenever the value you want lives in a *different* part of the response, keyed by
+an id — a season name, for instance:
+
+```jsonc
+"season": {
+  "path": "data.getEpisodePageByUid.data.program.seasons",
+  "find": { "id": "{data.getEpisodePageByUid.data.episode.seasonID}" },
+  "pick": "title",
+  "as": "int",
+  "map": { "فصل اول": 1, "فصل دوم": 2 }
+}
+```
+
+> **Do not read the season out of `document.title`.** These are single page apps:
+> when you click the next episode the URL changes immediately but the title still
+> says the old one for a moment, and the tracker looks straight away. That
+> mistake put a season-2 episode into season 1 on a live account. Take the value
+> from the API.
+
 ### Turning words into numbers
 
 Some sites name seasons instead of numbering them. `map` fixes that: it tries an
@@ -139,6 +161,58 @@ exact match first, then looks for a key inside the text, longest key first.
 ```
 
 Use `"selector": ".show-name"` instead of `source` to read an element.
+
+---
+
+## `account` — which mobile number is logged in
+
+Every Iranian platform signs you up by mobile number, and one person often holds
+several, with the subscription on a different number for each site. Logging in
+with the wrong one looks exactly like "my subscription vanished". The dashboard
+shows the number next to the provider, so the mistake is obvious.
+
+The extension reads it **only while something is really playing**, which is proof
+that this account's subscription works, and sends it at most once every
+`refreshHours` (or immediately when the number changes).
+
+Three ways to get it. Prefer whichever needs no network call.
+
+```jsonc
+// 1. the site already keeps it in the browser (filmnet)
+"account": {
+  "refreshHours": 20,
+  "source": "localStorage",        // or sessionStorage, or cookie
+  "key": "lscache-state",
+  "decode": "json",                // json | jwt | none
+  "fields": {
+    "label": { "path": "user.msisdn", "as": "phone" },   // shown in the dashboard
+    "name":  "user.name",
+    "note":  "user.subscription_package_name"
+  }
+}
+
+// 2. it is a claim inside the token the site stores (sheyda)
+"account": {
+  "source": "localStorage", "key": "atk", "decode": "jwt",
+  "fields": { "label": { "path": "m", "as": "phone" } }
+}
+
+// 3. ask the site's own profile API (filimo) — same origin, so the cookie goes too
+"account": {
+  "source": "url",
+  "url": "https://www.filimo.com/api/fa/v1/web/config/uxEvent",
+  "fields": { "label": { "path": "data.user.mobile", "as": "phone" },
+              "name":  "data.user.name" }
+}
+```
+
+`label` is required and is what the dashboard shows; `as: "phone"` normalises
+`989133169571` and `+98 913 316 9571` both to `09133169571`. `name` and `note`
+are optional extras shown when you hover.
+
+To find it: log in, open the site's profile page with F12 → **Network**, and look
+for the response carrying your number. Then check whether the site already has it
+in `localStorage` — usually it does, and then no request is needed at all.
 
 ---
 
@@ -229,9 +303,26 @@ The row is dropped when **any** condition is true.
 | `{"path": "x", "ne": "foo"}` | `x` is anything **but** `"foo"` |
 | `{"path": "x", "gt": 0}` | `x` as a number is greater than 0 |
 | `{"path": "x", "matches": "~re~"}` | the PHP regex matches |
+| `{"path": "x", "future": true}` | `x` is a date still in the future |
 
 **Always skip unreleased episodes.** Sites list "coming soon" entries, and
 without a skip rule every show would look like it has a new episode.
+
+### Episodes nested inside seasons
+
+When one response holds seasons that each hold their episodes, point `list` at
+the nested path and add `flatten`:
+
+```jsonc
+{
+  "id": "episodes", "emit": true,
+  "url": "https://filmnet.ir/api-v2/video-contents/{refKey}",
+  "list": "data.seasons.*.episodes",
+  "flatten": true,
+  "fields": { "number": { "path": "episode", "as": "int" },
+              "season": { "path": "season", "as": "int" } }
+}
+```
 
 ### `html` instead of `json`
 
@@ -263,6 +354,10 @@ A field is one of:
 | `{"path": "a.b", "as": "int"}` | read and convert |
 | `{"path": "a.b", "as": "int", "default": 1}` | …with a fallback value |
 | `{"path": "a.b", "map": {"one": 1}}` | …translating words into values first |
+| `{"path": "list", "find": {"id": "{x}"}, "pick": "name"}` | find a row in a list, take one field |
+
+`as` also understands `duration` (`"01:05:39"` → 3939 seconds) and `phone`
+(`989133169571` → `09133169571`).
 
 `as` can be `int`, `float`, `bool` or `string`. Persian and Arabic digits
 (`۲۲`, `٢٢`) are converted to normal numbers automatically.

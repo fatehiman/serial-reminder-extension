@@ -52,6 +52,11 @@ All of these numbers live in `config.php`.
   computers where you actually watch.
 - **No login screen when the extension is installed.** The extension swaps your
   API key for a one-time ticket and opens the dashboard already logged in.
+- **Shows which account each site is logged in with.** These platforms sign you
+  up by mobile number, and if you hold several, the subscription may sit on a
+  different number for each site — logging in with the wrong one looks like the
+  subscription vanished. The number appears next to the provider name, read
+  while something is playing, which proves that account really is subscribed.
 
 ## New movie sites without a new extension
 
@@ -78,6 +83,7 @@ with it:
 |---|---|---|
 | [`filimo.json`](server/providers/filimo.json) | filimo.com | its public REST catalog API |
 | [`sheyda.json`](server/providers/sheyda.json) | sheyda.com | its GraphQL API |
+| [`filmnet.json`](server/providers/filmnet.json) | filmnet.ir | its public `/api-v2/` REST API |
 
 Neither needs a login **on the server**: the hourly check only uses the parts of
 each site's API that are public. Your own browser session is used only in the
@@ -154,12 +160,15 @@ Every call needs `Authorization: Bearer <api key>`.
 | DELETE | `/api/serials/{id}` | stop following |
 | POST | `/api/serials/{id}/mark-up-to` | mark this episode and earlier as seen |
 | POST | `/api/check` | look for new episodes now |
+| POST | `/api/account` | report which account a site is logged in with |
+| GET | `/api/accounts` | the account on each site |
+| DELETE | `/api/accounts/{provider}` | forget one |
 | POST | `/api/session-ticket` | one-time dashboard login link |
 
 ## Privacy
 
-The server stores show titles, episode numbers and how far you watched. Nothing
-is sent anywhere else. The extension talks only to your own server and to the
+The server stores show titles, episode numbers, how far you watched, and the
+mobile number each site is logged in with. Nothing is sent anywhere else. The extension talks only to your own server and to the
 site you are already watching.
 
 ## Licence

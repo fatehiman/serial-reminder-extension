@@ -63,11 +63,32 @@ final class Api
                     'newSerial'     => $res['newSerial'],
                 ]);
 
+            // Which account is logged in on each site. The extension sends this
+            // only while something is playing, which proves the subscription works.
+            case $route === '/account' && $method === 'POST':
+                $user = Auth::requireApiUser();
+                $in   = self::body();
+                try {
+                    $res = Accounts::record((int) $user['id'], (string) ($in['provider'] ?? ''), $in);
+                } catch (\InvalidArgumentException $e) {
+                    sr_fail($e->getMessage(), 422);
+                }
+                sr_json(['ok' => true] + $res);
+
+            case $route === '/accounts' && $method === 'GET':
+                $user = Auth::requireApiUser();
+                sr_json(['ok' => true, 'accounts' => Accounts::forUser((int) $user['id'])]);
+
+            case (bool) preg_match('~^/accounts/([A-Za-z0-9_.-]+)$~', $route, $m) && $method === 'DELETE':
+                $user = Auth::requireApiUser();
+                sr_json(['ok' => Accounts::forget((int) $user['id'], $m[1])]);
+
             case $route === '/serials' && $method === 'GET':
                 $user = Auth::requireApiUser();
                 sr_json([
-                    'ok'      => true,
-                    'serials' => Serials::listForUser((int) $user['id'], (string) ($_GET['status'] ?? 'all')),
+                    'ok'       => true,
+                    'serials'  => Serials::listForUser((int) $user['id'], (string) ($_GET['status'] ?? 'all')),
+                    'accounts' => Accounts::forUser((int) $user['id']),
                 ]);
 
             case (bool) preg_match('~^/serials/(\d+)$~', $route, $m) && $method === 'GET':

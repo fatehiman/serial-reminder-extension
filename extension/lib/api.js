@@ -45,5 +45,6 @@ export const api = {
   serials:     () => request('/serials'),
   watch:       (payload) => request('/watch', { method: 'POST', body: payload }),
   check:       (serialId) => request('/check', { method: 'POST', body: serialId ? { serialId } : {} }),
+  account:     (payload) => request('/account', { method: 'POST', body: payload }),
   sessionTicket: () => request('/session-ticket', { method: 'POST' }),
 };

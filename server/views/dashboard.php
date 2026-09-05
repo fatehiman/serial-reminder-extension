@@ -1,5 +1,5 @@
 <?php
-/** @var array $serials @var string $status @var array $user */
+/** @var array $serials @var string $status @var array $user @var array $accounts */
 $pageTitle = 'My shows — Serial Reminder';
 $newCount  = count(array_filter($serials, static fn ($s) => $s['hasNew']));
 ?>
@@ -49,7 +49,10 @@ $newCount  = count(array_filter($serials, static fn ($s) => $s['hasNew']));
 
       <div class="card-body">
         <h3 dir="auto" title="<?= e($s['title']) ?>"><?= e($s['title']) ?></h3>
-        <p class="prov"><?= e($s['provider']) ?></p>
+        <?php $acct = $accounts[$s['provider']] ?? null; ?>
+        <p class="prov"><?= e($s['provider']) ?><?php if ($acct): ?>
+          <span class="acct" title="Logged in on <?= e($s['provider']) ?> as <?= e($acct['label']) ?><?= $acct['name'] ? ' — ' . e($acct['name']) : '' ?>&#10;Last seen <?= e(sr_ago($acct['seenAt'])) ?>">(<?= e($acct['label']) ?>)</span>
+        <?php endif; ?></p>
 
         <?php if ($next): ?>
           <p class="next">Watch next: <strong><?= e($next['label']) ?></strong>

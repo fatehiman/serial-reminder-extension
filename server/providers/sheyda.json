@@ -1,7 +1,7 @@
 {
   "name": "sheyda",
   "label": "Sheyda",
-  "version": 1,
+  "version": 3,
   "enabled": true,
   "homepage": "https://www.sheyda.com/",
 
@@ -22,12 +22,15 @@
     "  - 'order' is the position in the season list, NOT the episode number. A",
     "    season may open with a special, so order 7 is 'قسمت ۶'. The real number",
     "    is the digits in 'title'; a special has none and is dropped.",
-    "  - seasons are named in words ('فصل اول'), hence the season map below."
+    "  - seasons are named in words ('فصل اول'), hence the season map below.",
+    "",
+    "The season is looked up from the seasons list by the episode's seasonID.",
+    "It used to come from document.title, which cost a wrong season number in",
+    "the wild: this is a single page app, and on an in-page navigation the title",
+    "still says the previous episode when the tracker looks at it."
   ],
 
   "matches": ["*://www.sheyda.com/*", "*://sheyda.com/*"],
-
-  "_seasonMap": "Persian ordinals, first to twelfth.",
 
   "watch": {
     "urlPattern": "^https?://(?:www\\.)?sheyda\\.com/w/([A-Za-z0-9_-]+)",
@@ -46,7 +49,7 @@
       "body": {
         "operationName": "srEpisodePage",
         "variables": { "uid": "{episodeKey}" },
-        "query": "query srEpisodePage($uid: String!) { getEpisodePageByUid(uid: $uid) { status { statusCode } data { episode { uid title order duration seasonID programID releaseStatus } program { program { id uid title titleEnglish portraitImagePath } } } } }"
+        "query": "query srEpisodePage($uid: String!) { getEpisodePageByUid(uid: $uid) { status { statusCode } data { episode { uid title order duration seasonID programID releaseStatus } program { program { id uid title titleEnglish portraitImagePath } seasons { id title } } } } }"
       },
       "requireTruthy": "data.getEpisodePageByUid.data.episode.programID",
       "fields": {
@@ -59,7 +62,9 @@
         "episodeUrl":   "https://www.sheyda.com/w/{data.getEpisodePageByUid.data.episode.uid}",
         "duration":     { "path": "data.getEpisodePageByUid.data.episode.duration", "as": "int" },
         "season": {
-          "template": "{title}",
+          "path": "data.getEpisodePageByUid.data.program.seasons",
+          "find": { "id": "{data.getEpisodePageByUid.data.episode.seasonID}" },
+          "pick": "title",
           "as": "int",
           "default": 1,
           "map": {
@@ -77,6 +82,17 @@
       "fields": ["episode", "seriesTitle"],
       "seriesKeyFrom": "seriesTitle",
       "episodeUrl": "{url}"
+    }
+  },
+
+  "account": {
+    "_comment": "Sheyda keeps its access token in localStorage as 'atk'. The mobile number is the 'm' claim in it, so nothing has to be fetched.",
+    "refreshHours": 20,
+    "source": "localStorage",
+    "key": "atk",
+    "decode": "jwt",
+    "fields": {
+      "label": { "path": "m", "as": "phone" }
     }
   },
 

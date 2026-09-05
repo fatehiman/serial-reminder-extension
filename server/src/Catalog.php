@@ -121,6 +121,10 @@ final class Catalog
                     }
                     $raw = Val::path($body, (string) ($step['list'] ?? ''), []);
                     $raw = is_array($raw) ? $raw : [];
+                    // "seasons.*.episodes" gives a list per season; flatten it.
+                    if (!empty($step['flatten'])) {
+                        $raw = Val::flattenList($raw);
+                    }
                 } else { // html
                     $res = Http::get($url, $stepHeaders);
                     if ($res['error'] !== null || $res['status'] >= 400) {
@@ -205,6 +209,13 @@ final class Catalog
             if (array_key_exists('matches', $cond) && is_string($v)
                 && preg_match((string) $cond['matches'], $v) === 1) {
                 return true;
+            }
+            // Catches episodes a site lists before they air.
+            if (array_key_exists('future', $cond) && is_string($v) && $v !== '') {
+                $ts = strtotime($v);
+                if ($ts !== false && ($ts > time()) === (bool) $cond['future']) {
+                    return true;
+                }
             }
         }
         return false;
