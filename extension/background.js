@@ -62,6 +62,41 @@ async function registerTracker(providers) {
   } catch (e) {
     console.warn('[serial-reminder] could not register the tracker:', e.message, matches);
     await setStatus({ lastError: 'Cannot watch these sites: ' + e.message });
+    return;
+  }
+
+  await injectIntoOpenTabs(matches);
+}
+
+/**
+ * Registering a content script only affects pages loaded from now on. Without
+ * this, a tab that was already open — the episode you are watching right now —
+ * stays untracked until you reload it by hand, which is exactly the moment you
+ * would not think to. So inject into the matching tabs that are already open.
+ *
+ * The tracker guards itself with window.__serialReminderLoaded, so injecting
+ * into a tab that already has it does nothing.
+ */
+async function injectIntoOpenTabs(matches) {
+  let tabs = [];
+  try {
+    tabs = await chrome.tabs.query({ url: matches });
+  } catch (e) {
+    console.warn('[serial-reminder] could not list tabs:', e.message);
+    return;
+  }
+
+  for (const tab of tabs) {
+    if (!tab.id || !tab.url || !/^https?:/.test(tab.url)) continue;
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['content/tracker.js'],
+      });
+    } catch (e) {
+      // A tab can be discarded, or on a page we may not touch. Not worth a fuss.
+      console.debug('[serial-reminder] skipped tab', tab.id, e.message);
+    }
   }
 }
 
@@ -249,6 +284,12 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.runtime.onStartup.addListener(() => { refreshProviders(); flushQueue(); });
+
+// Also on every service-worker start: after reloading the extension, or after
+// Chrome has put the worker to sleep and woken it, this is what puts the tracker
+// back into the tabs that are already open.
+refreshProviders();
+flushQueue();
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === PROVIDER_ALARM) refreshProviders();
