@@ -1,4 +1,5 @@
 import { getSettings, setSettings, DEFAULT_API_URL } from './lib/settings.js';
+import { isRemoteOn, setRemoteOn } from './lib/remote.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -12,8 +13,21 @@ async function load() {
   const s = await getSettings();
   $('apiKey').value = s.apiKey;
   $('apiUrl').value = s.apiUrl || DEFAULT_API_URL;
+  $('tvRemote').checked = await isRemoteOn();
   await showStatus();
+  await showRemote();
 }
+
+async function showRemote() {
+  const on = await isRemoteOn();
+  const res = on ? await chrome.runtime.sendMessage({ type: 'remote-status' }).catch(() => null) : null;
+  $('i-remote').textContent = !on ? 'off' : res && res.connected ? 'connected' : 'waiting for Sound Commander';
+}
+
+$('tvRemote').addEventListener('change', async () => {
+  await setRemoteOn($('tvRemote').checked);
+  setTimeout(showRemote, 1000);
+});
 
 async function showStatus() {
   const { status = {}, queue = [], providers = [] } = await chrome.storage.local.get({

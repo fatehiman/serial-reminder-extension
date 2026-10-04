@@ -1,5 +1,6 @@
 import { api, ApiError } from './lib/api.js';
 import { getSettings, isConfigured } from './lib/settings.js';
+import { startRemote, remoteConnected, REMOTE_ALARM } from './lib/remote.js';
 
 const PROVIDER_ALARM = 'refresh-providers';
 const QUEUE_ALARM    = 'flush-queue';
@@ -263,6 +264,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case 'flush':
         sendResponse({ ok: true, ...(await flushQueue()) });
         break;
+      case 'remote-status':
+        sendResponse({ ok: true, connected: remoteConnected() });
+        break;
       case 'ping':
         try {
           sendResponse({ ok: true, data: await api.ping() });
@@ -290,10 +294,12 @@ chrome.runtime.onStartup.addListener(() => { refreshProviders(); flushQueue(); }
 // back into the tabs that are already open.
 refreshProviders();
 flushQueue();
+startRemote();
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === PROVIDER_ALARM) refreshProviders();
   if (alarm.name === QUEUE_ALARM) flushQueue();
+  if (alarm.name === REMOTE_ALARM) startRemote();
 });
 
 // Changing the key or the URL means a different account or server: start fresh.
@@ -302,4 +308,5 @@ chrome.storage.onChanged.addListener((changes, area) => {
     chrome.storage.local.remove('accountSent');
     refreshProviders();
   }
+  if (area === 'local' && changes.tvRemote) startRemote();
 });

@@ -64,6 +64,17 @@ All of these numbers live in `config.php`.
   to a 65-minute episode means it was opened and closed; `00:00` means the
   extension never saw it at all, so it was watched on a computer where the
   extension was not running.
+- **Pick a show with the number keys.** Every card shows its number. On the
+  dashboard, type that number (then Enter, or wait a moment) and the card opens
+  in the same tab. It reads the physical key, so it works with any keyboard
+  layout.
+- **TV remote, on a TV box.** Tick *TV remote* in the extension's options on a
+  computer that runs Sound Commander (a small local voice / phone remote
+  service). The extension then connects to it on
+  `ws://127.0.0.1:8765` and does the Chrome side of its commands: *"hey tv, open
+  index"* opens the dashboard, *"hey tv, three"* opens card 3, and play, pause,
+  back and forward act on the page's video. It is off by default; on other
+  computers nothing is ever opened.
 - **One dashboard for every computer.** All data lives on the server. Open
   `https://your-server/dashboard` anywhere — the extension is only needed on the
   computers where you actually watch.
@@ -131,7 +142,8 @@ extension/
   manifest.json      Chrome MV3
   background.js      provider list, report queue, dashboard login
   content/tracker.js watches the player, works out the episode
-  options.*          the only two settings: API key and API URL
+  lib/remote.js      the TV remote link (off unless ticked in the options)
+  options.*          API key, API URL, and the TV remote switch
   popup.*            status and a button to the dashboard
 tools/make-icons.js  regenerates the extension icons
 docs/PROVIDERS.md    how to add a new movie site

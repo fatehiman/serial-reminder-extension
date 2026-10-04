@@ -168,6 +168,15 @@ at `chrome://extensions` (the ↻ icon). Only that folder matters; the version i
 The background worker now re-injects the tracker into tabs that are already
 open, so reloading the extension is enough — no need to reload each page.
 
+**On the TV box (deb4)** the extension is loaded in the *Kimiasoft* profile from
+`/home/mainadmin/.local/share/serial-reminder/extension`, with *TV remote* on.
+Copy the new `extension/` there, then let Sound Commander reload it — no click
+needed:
+
+```bash
+curl -X POST http://127.0.0.1/api/ext-reload     # on deb4
+```
+
 ### Deploying only a provider script
 
 This is the common case — adding support for a new movie site:
