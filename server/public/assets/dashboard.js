@@ -76,6 +76,39 @@
     });
   });
 
+  // Type a card's number, then Enter (or wait a moment): open that card in
+  // this tab. Uses ev.code, so it works whatever keyboard layout is active
+  // (the TV box toggles us/fa). Used by the TV's voice remote.
+  var typed = '', typedTimer, typedBox;
+  function openTyped() {
+    clearTimeout(typedTimer);
+    var n = parseInt(typed, 10);
+    typed = '';
+    if (typedBox) { typedBox.remove(); typedBox = null; }
+    var card = document.querySelectorAll('.grid .card')[n - 1];
+    var link = card && card.querySelector('.card-link');
+    if (link && link.getAttribute('href') !== '#') location.href = link.href;
+  }
+  document.addEventListener('keydown', function (ev) {
+    if (ev.ctrlKey || ev.altKey || ev.metaKey || ev.target.closest('input, select, textarea')) return;
+    var m = /^(?:Digit|Numpad)(\d)$/.exec(ev.code);
+    if (m && typed.length < 3) {
+      ev.preventDefault();
+      typed += m[1];
+      if (!typedBox) { typedBox = document.createElement('div'); typedBox.className = 'num-typed'; document.body.appendChild(typedBox); }
+      typedBox.textContent = typed;
+      clearTimeout(typedTimer);
+      typedTimer = setTimeout(openTyped, 1500);
+    } else if (typed && (ev.code === 'Enter' || ev.code === 'NumpadEnter')) {
+      ev.preventDefault();
+      openTyped();
+    } else if (typed && ev.code === 'Escape') {
+      typed = '';
+      clearTimeout(typedTimer);
+      if (typedBox) { typedBox.remove(); typedBox = null; }
+    }
+  });
+
   var all = document.getElementById('check-all');
   if (all) {
     all.addEventListener('click', function () {

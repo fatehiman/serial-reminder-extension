@@ -30,13 +30,15 @@ $newCount  = count(array_filter($serials, static fn ($s) => $s['hasNew']));
 <?php endif; ?>
 
 <div class="grid">
-<?php foreach ($serials as $s):
+<?php $num = 0; foreach ($serials as $s):
+    $num++;
     $next = $s['nextEpisode'];
     $last = $s['lastWatched'];
 ?>
   <article class="card <?= $s['hasNew'] ? 'is-new' : '' ?>" data-id="<?= (int) $s['id'] ?>">
     <a class="card-link" href="<?= e($s['watchUrl'] ?? $s['seriesUrl'] ?? '#') ?>" target="_blank" rel="noopener">
       <div class="poster">
+        <span class="card-num" title="Press <?= $num ?> (then Enter) to open it here"><?= $num ?></span>
         <?php if ($s['poster']): ?>
           <img src="<?= e($s['poster']) ?>" alt="" loading="lazy" referrerpolicy="no-referrer">
         <?php else: ?>
@@ -110,4 +112,4 @@ $newCount  = count(array_filter($serials, static fn ($s) => $s['hasNew']));
    <span id="check-status" class="muted"></span></p>
 <?php endif; ?>
 
-<script src="/assets/dashboard.js?v=3"></script>
+<script src="/assets/dashboard.js?v=4"></script>
